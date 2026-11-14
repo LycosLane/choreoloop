@@ -1,10 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
   <rect width="512" height="512" rx="112" fill="#F8FAFC"/>
   <!-- ChoreoLoop Light Mode Master (Black Fedora + Crisp Light) -->
-  <path d="M 110.97 376.79 A 192 192 0 1 1 229.28 65.87" fill="none" stroke="#00B4FF" stroke-width="40" stroke-linecap="round"/>
-  <path d="M 226.5 46.06 A 212 212 0 0 1 314.43 52.23 L 243.47 127.49 L 232.06 85.67 Z" fill="#00B4FF"/>
-  <path d="M 401.03 135.21 A 192 192 0 1 1 282.72 446.13" fill="none" stroke="#F43F5E" stroke-width="40" stroke-linecap="round"/>
-  <path d="M 285.5 465.94 A 212 212 0 0 1 197.57 459.77 L 268.53 384.51 L 279.94 426.33 Z" fill="#F43F5E"/>
+  <path d="M 111.1 381.96 A 192 192 0 0 1 229.28 65.87" fill="none" stroke="#00B4FF" stroke-width="40" stroke-linecap="round"/>
+  <path d="M 226.5 46.06 A 212.0 212.0 0 0 1 314.44 52.21 L 237.91 127.27 L 232.06 85.67 Z" fill="#00B4FF"/>
+  <path d="M 400.9 130.04 A 192 192 0 0 1 282.72 446.13" fill="none" stroke="#F43F5E" stroke-width="40" stroke-linecap="round"/>
+  <path d="M 285.5 465.94 A 212.0 212.0 0 0 1 197.56 459.79 L 274.09 384.73 L 279.94 426.33 Z" fill="#F43F5E"/>
   <g transform="translate(256, 248) scale(0.94) translate(-256, -258) rotate(-6 256 256)">
     <g stroke="#F8FAFC" stroke-width="14" stroke-linejoin="round">
       <rect x="122" y="330" width="64" height="94" rx="24" fill="#F8FAFC"/>
