@@ -9,7 +9,7 @@
     <title>ChoreoLoop - Dance Practice &amp; A-B Loop Studio</title>
     <meta
       name="description"
-      content="Offline-first PWA for dancers with A-B looping, slow-motion speed control, video mirror mode, and count-in timer."
+      content="Offline-first PWA for dancers with A-B looping, slow-motion speed control, video mirror mode, and BPM count-in timer."
     />
     <meta id="theme-color-meta" name="theme-color" content="#101216" />
 
@@ -37,8 +37,11 @@
           <button id="btn-theme" class="btn-pill btn-surface" type="button" aria-label="Switch theme">
             Light
           </button>
+          <button id="btn-yt-top" class="btn-pill btn-surface" type="button" aria-label="Add YouTube link">
+            + YT
+          </button>
           <button id="btn-import-top" class="btn-pill btn-accent" type="button" aria-label="Import media">
-            + Import
+            + File
           </button>
           <button id="btn-library" class="btn-pill btn-surface" type="button" aria-label="Open library">
             Library <span id="library-count" class="badge">0</span>
@@ -58,17 +61,22 @@
       <!-- Main Studio Content -->
       <main class="studio-main">
         <!-- Media Stage -->
-        <section class="stage-card" aria-label="Media stage">
+        <section id="stage-card" class="stage-card" aria-label="Media stage">
           <!-- Empty State -->
           <div id="stage-empty" class="stage-empty">
             <img src="./icons/choreoloop.svg" alt="" class="empty-logo" data-theme-logo />
             <h1 class="empty-title">Ready to Practice</h1>
             <p class="empty-desc">
-              Import music or dance videos (MP3, M4A, WAV, MP4, MOV). Everything stays 100% offline on your device.
+              Import local audio/video (MP3, M4A, WAV, MP4, MOV) for offline use, or paste a YouTube link.
             </p>
-            <button id="btn-import-empty" class="btn-primary btn-lg" type="button">
-              Import Audio or Video
-            </button>
+            <div class="empty-cta-row">
+              <button id="btn-import-empty" class="btn-primary btn-lg" type="button">
+                Import File
+              </button>
+              <button id="btn-yt-empty" class="btn-pill btn-surface btn-lg-pill" type="button">
+                YouTube Link
+              </button>
+            </div>
           </div>
 
           <!-- Video Viewport -->
@@ -80,7 +88,11 @@
               webkit-playsinline
               preload="auto"
             ></video>
-            <span id="mirror-badge" class="stage-badge hidden">MIRRORED</span>
+          </div>
+
+          <!-- YouTube Viewport -->
+          <div id="stage-yt-wrap" class="stage-yt-wrap hidden">
+            <div id="yt-container" class="yt-container"></div>
           </div>
 
           <!-- Audio Stage -->
@@ -94,11 +106,22 @@
             </div>
           </div>
 
+          <!-- Stage Overlays (Mirror Badge + Fullscreen Toggle) -->
+          <span id="mirror-badge" class="stage-badge hidden">MIRRORED</span>
+          <button
+            id="btn-fullscreen"
+            class="btn-stage-fs hidden"
+            type="button"
+            aria-label="Toggle fullscreen stage"
+          >
+            Fullscreen
+          </button>
+
           <audio id="audio-player" preload="auto"></audio>
 
           <!-- Count-In Overlay -->
           <div id="countin-overlay" class="countin-overlay hidden" role="status" aria-live="assertive">
-            <span class="countin-label">GET READY</span>
+            <span id="countin-label" class="countin-label">GET READY</span>
             <span id="countin-number" class="countin-number">3</span>
             <button id="btn-cancel-countin" class="btn-pill btn-surface" type="button">
               Cancel
@@ -133,7 +156,7 @@
             <div id="scrubber-thumb" class="scrubber-thumb"></div>
           </div>
 
-          <!-- Primary Transport & Dance Extras -->
+          <!-- Primary Transport -->
           <div class="transport-row">
             <button id="btn-back-5" class="btn-icon-text" type="button" aria-label="Rewind 5 seconds">
               -5s
@@ -146,16 +169,36 @@
             </button>
           </div>
 
+          <!-- Mirror & Count-In Controls -->
           <div class="extras-row">
             <button id="btn-mirror" class="btn-toggle" type="button" aria-pressed="false">
               Mirror: Off
             </button>
             <div class="countin-group" role="group" aria-label="Count-in timer">
-              <span class="group-label">Count-In</span>
-              <button class="btn-chip is-active" data-countin="0" type="button">Off</button>
-              <button class="btn-chip" data-countin="3" type="button">3s</button>
-              <button class="btn-chip" data-countin="5" type="button">5s</button>
+              <button class="btn-chip is-active" data-countin="off" type="button">Off</button>
+              <button class="btn-chip" data-countin="3s" type="button">3s</button>
+              <button class="btn-chip" data-countin="5s" type="button">5s</button>
+              <button class="btn-chip" data-countin="4beats" type="button">4 Beats</button>
+              <button class="btn-chip" data-countin="8beats" type="button">8 Beats</button>
             </div>
+          </div>
+
+          <div id="bpm-row" class="bpm-row hidden">
+            <label for="bpm-input" class="group-label">Track BPM</label>
+            <div class="bpm-controls">
+              <button id="btn-bpm-minus" class="btn-mini btn-surface" type="button">-5</button>
+              <input
+                id="bpm-input"
+                class="bpm-input"
+                type="number"
+                min="40"
+                max="240"
+                step="1"
+                value="120"
+              />
+              <button id="btn-bpm-plus" class="btn-mini btn-surface" type="button">+5</button>
+            </div>
+            <span id="bpm-effective" class="bpm-effective">120 BPM</span>
           </div>
         </section>
 
@@ -163,9 +206,16 @@
         <section class="panel-card" aria-label="A-B Loop Controls">
           <div class="panel-header">
             <h2 class="panel-title">A-B Loop</h2>
-            <button id="btn-save-bookmark" class="btn-mini btn-accent" type="button" disabled>
-              + Save Loop
-            </button>
+            <div class="panel-header-actions">
+              <div class="nudge-step-group" role="group" aria-label="Fine-tune step size">
+                <button class="btn-step is-active" data-step="0.1" type="button">0.1s</button>
+                <button class="btn-step" data-step="0.25" type="button">0.25s</button>
+                <button class="btn-step" data-step="0.5" type="button">0.5s</button>
+              </div>
+              <button id="btn-save-bookmark" class="btn-mini btn-accent" type="button" disabled>
+                + Save
+              </button>
+            </div>
           </div>
 
           <div class="ab-grid">
@@ -184,8 +234,8 @@
                 A: <span id="label-a">--:--.-</span>
               </button>
               <div class="nudge-btns">
-                <button id="btn-a-minus" class="btn-nudge" type="button" disabled>-0.5s</button>
-                <button id="btn-a-plus" class="btn-nudge" type="button" disabled>+0.5s</button>
+                <button id="btn-a-minus" class="btn-nudge" type="button" disabled>-0.1s</button>
+                <button id="btn-a-plus" class="btn-nudge" type="button" disabled>+0.1s</button>
               </div>
             </div>
             <div class="nudge-box">
@@ -193,8 +243,8 @@
                 B: <span id="label-b">--:--.-</span>
               </button>
               <div class="nudge-btns">
-                <button id="btn-b-minus" class="btn-nudge" type="button" disabled>-0.5s</button>
-                <button id="btn-b-plus" class="btn-nudge" type="button" disabled>+0.5s</button>
+                <button id="btn-b-minus" class="btn-nudge" type="button" disabled>-0.1s</button>
+                <button id="btn-b-plus" class="btn-nudge" type="button" disabled>+0.1s</button>
               </div>
             </div>
           </div>
@@ -215,7 +265,7 @@
 
           <!-- Saved Loop Bookmarks -->
           <div id="bookmarks-list" class="bookmarks-list">
-            <span class="empty-hint">Set A and B, then tap "+ Save Loop" to bookmark sections.</span>
+            <span class="empty-hint">Set A and B, then tap "+ Save" to bookmark sections.</span>
           </div>
         </section>
 
@@ -253,17 +303,50 @@
       <!-- Toast Notification -->
       <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
+      <!-- YouTube Link Modal -->
+      <div id="yt-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="Add YouTube Link">
+        <div class="modal-sheet">
+          <div class="modal-header">
+            <h2 class="modal-title">Add YouTube Video</h2>
+            <button id="btn-close-yt" class="btn-pill btn-surface" type="button">Close</button>
+          </div>
+          <p class="modal-note">
+            Paste a YouTube link to practice with A-B Loop, Speed, Mirror, and BPM Count-In (requires internet).
+          </p>
+          <form id="yt-form" class="yt-form">
+            <div class="yt-input-row">
+              <input
+                id="yt-url-input"
+                type="url"
+                class="text-input"
+                placeholder="https://www.youtube.com/watch?v=..."
+                required
+              />
+              <button id="btn-yt-paste" class="btn-pill btn-surface" type="button">Paste</button>
+            </div>
+            <input
+              id="yt-title-input"
+              type="text"
+              class="text-input"
+              placeholder="Optional title (e.g. Choreography Reference)"
+              maxlength="48"
+            />
+            <button class="btn-primary" type="submit">Load YouTube Video</button>
+          </form>
+        </div>
+      </div>
+
       <!-- Library Drawer Modal -->
       <div id="library-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="Track Library">
         <div class="modal-sheet">
           <div class="modal-header">
             <h2 class="modal-title">Local Library</h2>
             <div class="modal-actions">
-              <button id="btn-import-modal" class="btn-pill btn-accent" type="button">+ Import</button>
+              <button id="btn-import-modal" class="btn-pill btn-accent" type="button">+ File</button>
               <button id="btn-close-library" class="btn-pill btn-surface" type="button">Close</button>
             </div>
           </div>
-          <p class="modal-note">Stored locally in IndexedDB. Works 100% offline.</p>
+          <p class="modal-note">Audio &amp; video files are stored locally in IndexedDB for 100% offline use.</p>
           <div id="library-list" class="library-list"></div>
         </div>
       </div>

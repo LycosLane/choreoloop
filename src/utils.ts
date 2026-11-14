@@ -1,5 +1,3 @@
-import type { MediaKind } from './types';
-
 export function formatTime(seconds: number, showTenths = true): string {
   if (!Number.isFinite(seconds) || seconds < 0) {
     return showTenths ? '00:00.0' : '00:00';
@@ -20,16 +18,16 @@ export function formatBytes(bytes: number): string {
   return `${value >= 10 || exp === 0 ? value.toFixed(0) : value.toFixed(1)} ${units[exp]}`;
 }
 
-export function detectMediaKind(file: File): MediaKind {
+export function detectMediaKind(file: File): 'audio' | 'video' {
   const mime = file.type.toLowerCase();
   if (mime.startsWith('video/')) return 'video';
   if (mime.startsWith('audio/')) return 'audio';
   const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
-  if (['mp4', 'mov', 'm4v', 'webm'].includes(ext)) return 'video';
+  if (['mp4', 'mov', 'm4v', 'webm', 'mkv'].includes(ext)) return 'video';
   return 'audio';
 }
 
-export function inferMimeType(file: File, kind: MediaKind): string {
+export function inferMimeType(file: File, kind: 'audio' | 'video'): string {
   if (file.type) return file.type;
   const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
   const map: Record<string, string> = {
@@ -88,7 +86,7 @@ export function playCountInTone(isGoTone: boolean): void {
   }
 }
 
-export function probeMediaDuration(blob: Blob, kind: MediaKind): Promise<number> {
+export function probeMediaDuration(blob: Blob, kind: 'audio' | 'video'): Promise<number> {
   return new Promise((resolve) => {
     const url = URL.createObjectURL(blob);
     const el = document.createElement(kind);

@@ -1,4 +1,6 @@
-export type MediaKind = 'audio' | 'video';
+export type MediaKind = 'audio' | 'video' | 'youtube';
+
+export type CountInMode = 'off' | '3s' | '5s' | '4beats' | '8beats';
 
 export interface LoopBookmark {
   id: string;
@@ -11,7 +13,8 @@ export interface LoopBookmark {
 export interface TrackSettings {
   speed: number;
   mirror: boolean;
-  countInSeconds: number;
+  countInMode: CountInMode;
+  bpm: number;
   pointA: number | null;
   pointB: number | null;
   loopEnabled: boolean;
@@ -22,6 +25,7 @@ export interface TrackMetadata {
   name: string;
   mimeType: string;
   mediaKind: MediaKind;
+  youtubeId?: string;
   size: number;
   duration: number;
   createdAt: number;
@@ -33,5 +37,5 @@ export interface TrackMetadata {
 export interface TrackMediaRecord {
   id: string;
   mimeType: string;
-  data: ArrayBuffer;
+  data: Blob | ArrayBuffer;
 }

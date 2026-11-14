@@ -1,5 +1,6 @@
-import type { MediaKind } from './types';
+import type { CountInMode, MediaKind, TrackSettings } from './types';
 import { clamp, playCountInTone } from './utils';
+import { loadYouTubeAPI, type YTPlayerInstance } from './youtube';
 
 export interface PlayerStateSnapshot {
   isPlaying: boolean;
@@ -7,7 +8,8 @@ export interface PlayerStateSnapshot {
   duration: number;
   speed: number;
   mirror: boolean;
-  countInSeconds: number;
+  countInMode: CountInMode;
+  bpm: number;
   countInRemaining: number | null;
   pointA: number | null;
   pointB: number | null;
@@ -25,16 +27,22 @@ export interface PlayerCallbacks {
 export class ChoreoPlayer {
   private videoEl: HTMLVideoElement;
   private audioEl: HTMLAudioElement;
+  private ytContainerEl: HTMLElement;
   private callbacks: PlayerCallbacks;
 
   private activeKind: MediaKind | null = null;
   private objectUrl: string | null = null;
+  private ytPlayer: YTPlayerInstance | null = null;
+  private ytReady = false;
+  private ytPlaying = false;
+
   private rafId: number | null = null;
   private countInTimerId: number | null = null;
 
   private speed = 1.0;
   private mirror = false;
-  private countInSeconds = 0;
+  private countInMode: CountInMode = 'off';
+  private bpm = 120;
   private countInRemaining: number | null = null;
   private pointA: number | null = null;
   private pointB: number | null = null;
@@ -43,17 +51,19 @@ export class ChoreoPlayer {
   constructor(
     videoEl: HTMLVideoElement,
     audioEl: HTMLAudioElement,
+    ytContainerEl: HTMLElement,
     callbacks: PlayerCallbacks
   ) {
     this.videoEl = videoEl;
     this.audioEl = audioEl;
+    this.ytContainerEl = ytContainerEl;
     this.callbacks = callbacks;
 
     this.bindMediaEvents(this.videoEl);
     this.bindMediaEvents(this.audioEl);
   }
 
-  private get activeMedia(): HTMLMediaElement | null {
+  private get activeHtmlMedia(): HTMLMediaElement | null {
     if (this.activeKind === 'video') return this.videoEl;
     if (this.activeKind === 'audio') return this.audioEl;
     return null;
@@ -61,19 +71,19 @@ export class ChoreoPlayer {
 
   private bindMediaEvents(el: HTMLMediaElement): void {
     el.addEventListener('play', () => {
-      if (el !== this.activeMedia) return;
+      if (el !== this.activeHtmlMedia) return;
       this.startLoopMonitor();
       this.emitState();
     });
 
     el.addEventListener('pause', () => {
-      if (el !== this.activeMedia) return;
+      if (el !== this.activeHtmlMedia) return;
       this.stopLoopMonitor();
       this.emitState();
     });
 
     el.addEventListener('ended', () => {
-      if (el !== this.activeMedia) return;
+      if (el !== this.activeHtmlMedia) return;
       if (this.loopEnabled && this.pointA !== null) {
         el.currentTime = this.pointA;
         void el.play();
@@ -84,61 +94,40 @@ export class ChoreoPlayer {
     });
 
     el.addEventListener('loadedmetadata', () => {
-      if (el !== this.activeMedia) return;
+      if (el !== this.activeHtmlMedia) return;
       this.applyPlaybackRate(el);
       this.emitTime();
       this.emitState();
     });
 
     el.addEventListener('timeupdate', () => {
-      if (el !== this.activeMedia) return;
-      this.checkABLoop(el);
+      if (el !== this.activeHtmlMedia) return;
+      this.checkABLoop();
       this.emitTime();
     });
 
     el.addEventListener('error', () => {
-      if (el !== this.activeMedia) return;
+      if (el !== this.activeHtmlMedia) return;
       this.stopLoopMonitor();
-      this.callbacks.onError('Unable to play this media file on this browser.');
+      const code = el.error?.code;
+      if (code === MediaError.MEDIA_ERR_DECODE || code === MediaError.MEDIA_ERR_SRC_NOT_SUPPORTED) {
+        this.callbacks.onError(
+          'Unsupported video/audio codec in this browser (common with 4K HEVC/H.265 phone videos). Try playing on your phone or recording in H.264 MP4.'
+        );
+      } else {
+        this.callbacks.onError('Unable to play this media file on this browser.');
+      }
       this.emitState();
     });
   }
 
-  public loadMedia(
-    blob: Blob,
-    kind: MediaKind,
-    settings: {
-      speed: number;
-      mirror: boolean;
-      countInSeconds: number;
-      pointA: number | null;
-      pointB: number | null;
-      loopEnabled: boolean;
-    }
-  ): void {
-    this.cancelCountIn();
-    this.stopCurrentMedia();
-
-    if (this.objectUrl) {
-      URL.revokeObjectURL(this.objectUrl);
-      this.objectUrl = null;
-    }
-
+  public loadMedia(blob: Blob, kind: 'audio' | 'video', settings: TrackSettings): void {
+    this.cleanupActiveMedia();
+    this.applyTrackSettings(settings);
     this.activeKind = kind;
-    this.speed = clamp(settings.speed, 0.25, 1.25);
-    this.mirror = settings.mirror;
-    this.countInSeconds = settings.countInSeconds;
-    this.pointA = settings.pointA;
-    this.pointB = settings.pointB;
-    this.loopEnabled = settings.loopEnabled;
 
     this.objectUrl = URL.createObjectURL(blob);
     const target = kind === 'video' ? this.videoEl : this.audioEl;
-    const other = kind === 'video' ? this.audioEl : this.videoEl;
-
-    other.removeAttribute('src');
-    other.load();
-
     target.src = this.objectUrl;
     this.applyPlaybackRate(target);
     this.applyMirror();
@@ -146,96 +135,236 @@ export class ChoreoPlayer {
     this.emitState();
   }
 
-  public unload(): void {
-    this.cancelCountIn();
-    this.stopCurrentMedia();
-    if (this.objectUrl) {
-      URL.revokeObjectURL(this.objectUrl);
-      this.objectUrl = null;
+  public async loadYouTube(videoId: string, settings: TrackSettings): Promise<void> {
+    this.cleanupActiveMedia();
+    this.applyTrackSettings(settings);
+    this.activeKind = 'youtube';
+    this.applyMirror();
+    this.emitState();
+
+    try {
+      const YT = await loadYouTubeAPI();
+      if (this.activeKind !== 'youtube') return;
+
+      this.ytContainerEl.innerHTML = '<div id="yt-player-mount"></div>';
+      this.ytPlayer = new YT.Player('yt-player-mount', {
+        videoId,
+        playerVars: {
+          playsinline: 1,
+          rel: 0,
+          modestbranding: 1,
+          enablejsapi: 1,
+        },
+        events: {
+          onReady: (e) => {
+            this.ytReady = true;
+            e.target.setPlaybackRate(this.speed);
+            this.emitTime();
+            this.emitState();
+          },
+          onStateChange: (e) => {
+            const state = e.data;
+            if (state === YT.PlayerState.PLAYING) {
+              this.ytPlaying = true;
+              e.target.setPlaybackRate(this.speed);
+              this.startLoopMonitor();
+              this.emitState();
+            } else if (state === YT.PlayerState.PAUSED || state === YT.PlayerState.CUED) {
+              this.ytPlaying = false;
+              this.stopLoopMonitor();
+              this.emitState();
+            } else if (state === YT.PlayerState.ENDED) {
+              if (this.loopEnabled && this.pointA !== null) {
+                e.target.seekTo(this.pointA, true);
+                e.target.playVideo();
+                return;
+              }
+              this.ytPlaying = false;
+              this.stopLoopMonitor();
+              this.emitState();
+            }
+          },
+          onError: () => {
+            this.callbacks.onError('YouTube video could not be loaded (embedding may be disabled by uploader).');
+          },
+        },
+      });
+    } catch (err) {
+      this.callbacks.onError(err instanceof Error ? err.message : 'Failed to load YouTube Player.');
     }
-    this.activeKind = null;
+  }
+
+  public unload(): void {
+    this.cleanupActiveMedia();
     this.pointA = null;
     this.pointB = null;
     this.loopEnabled = false;
     this.emitState();
   }
 
-  private stopCurrentMedia(): void {
+  private applyTrackSettings(settings: TrackSettings): void {
+    this.speed = clamp(settings.speed, 0.25, 1.25);
+    this.mirror = settings.mirror;
+    this.countInMode = settings.countInMode;
+    this.bpm = clamp(settings.bpm || 120, 40, 240);
+    this.pointA = settings.pointA;
+    this.pointB = settings.pointB;
+    this.loopEnabled = settings.loopEnabled;
+  }
+
+  private cleanupActiveMedia(): void {
+    this.cancelCountIn();
     this.stopLoopMonitor();
+
     this.videoEl.pause();
     this.audioEl.pause();
+    this.videoEl.removeAttribute('src');
+    this.videoEl.load();
+    this.audioEl.removeAttribute('src');
+    this.audioEl.load();
+
+    if (this.objectUrl) {
+      URL.revokeObjectURL(this.objectUrl);
+      this.objectUrl = null;
+    }
+
+    if (this.ytPlayer) {
+      try {
+        this.ytPlayer.destroy();
+      } catch {
+        // Ignore teardown errors
+      }
+      this.ytPlayer = null;
+    }
+    this.ytContainerEl.innerHTML = '';
+    this.ytReady = false;
+    this.ytPlaying = false;
+    this.activeKind = null;
   }
 
   public togglePlay(): void {
-    const media = this.activeMedia;
-    if (!media) return;
+    if (!this.activeKind) return;
 
     if (this.countInRemaining !== null) {
       this.cancelCountIn();
       return;
     }
 
-    if (!media.paused) {
-      media.pause();
+    if (this.isCurrentlyPlaying()) {
+      this.pauseNow();
       return;
     }
 
-    if (this.countInSeconds > 0) {
-      this.startCountIn(media);
+    if (this.countInMode !== 'off') {
+      this.startCountIn();
     } else {
-      this.startPlayback(media);
+      this.startPlayback();
     }
   }
 
-  private startPlayback(media: HTMLMediaElement): void {
+  private isCurrentlyPlaying(): boolean {
+    if (this.activeKind === 'youtube') return this.ytPlaying;
+    const media = this.activeHtmlMedia;
+    return Boolean(media && !media.paused);
+  }
+
+  private pauseNow(): void {
+    if (this.activeKind === 'youtube') {
+      this.ytPlayer?.pauseVideo();
+      return;
+    }
+    this.activeHtmlMedia?.pause();
+  }
+
+  private getCurrentTimeInternal(): number {
+    if (this.activeKind === 'youtube') {
+      return this.ytReady && this.ytPlayer ? this.ytPlayer.getCurrentTime() : 0;
+    }
+    return this.activeHtmlMedia?.currentTime ?? 0;
+  }
+
+  private getDurationInternal(): number {
+    if (this.activeKind === 'youtube') {
+      return this.ytReady && this.ytPlayer ? this.ytPlayer.getDuration() : 0;
+    }
+    const d = this.activeHtmlMedia?.duration ?? 0;
+    return Number.isFinite(d) ? d : 0;
+  }
+
+  private startPlayback(): void {
+    const cur = this.getCurrentTimeInternal();
     if (
       this.loopEnabled &&
       this.pointA !== null &&
       this.pointB !== null &&
       this.pointB > this.pointA &&
-      (media.currentTime < this.pointA || media.currentTime >= this.pointB)
+      (cur < this.pointA || cur >= this.pointB)
     ) {
-      media.currentTime = this.pointA;
+      this.seekInternal(this.pointA);
     }
+
+    if (this.activeKind === 'youtube') {
+      if (!this.ytReady || !this.ytPlayer) return;
+      this.ytPlayer.setPlaybackRate(this.speed);
+      this.ytPlayer.playVideo();
+      return;
+    }
+
+    const media = this.activeHtmlMedia;
+    if (!media) return;
     this.applyPlaybackRate(media);
     void media.play().catch(() => {
       this.callbacks.onError('Tap Play again to start playback.');
     });
   }
 
-  private startCountIn(media: HTMLMediaElement): void {
-    // Unlock media element on iOS Safari within the user gesture
-    const wasMuted = media.muted;
-    media.muted = true;
-    void media
-      .play()
-      .then(() => {
-        media.pause();
-        media.muted = wasMuted;
-      })
-      .catch(() => {
-        media.muted = wasMuted;
-      });
+  private startCountIn(): void {
+    // Unlock HTML media element on iOS Safari within user gesture
+    const media = this.activeHtmlMedia;
+    if (media) {
+      const wasMuted = media.muted;
+      media.muted = true;
+      void media
+        .play()
+        .then(() => {
+          media.pause();
+          media.muted = wasMuted;
+        })
+        .catch(() => {
+          media.muted = wasMuted;
+        });
+    }
 
-    let remaining = this.countInSeconds;
-    this.countInRemaining = remaining;
+    const isBeats = this.countInMode === '4beats' || this.countInMode === '8beats';
+    const totalSteps =
+      this.countInMode === '3s'
+        ? 3
+        : this.countInMode === '5s'
+          ? 5
+          : this.countInMode === '4beats'
+            ? 4
+            : 8;
+    const stepMs = isBeats ? Math.round(60000 / (this.bpm * this.speed)) : 1000;
+
+    let stepIndex = 1;
+    this.countInRemaining = isBeats ? 1 : totalSteps;
     playCountInTone(false);
     this.emitState();
 
     this.countInTimerId = window.setInterval(() => {
-      remaining -= 1;
-      if (remaining <= 0) {
+      stepIndex += 1;
+      if (stepIndex > totalSteps) {
         this.clearCountInTimer();
         this.countInRemaining = null;
         playCountInTone(true);
         this.emitState();
-        this.startPlayback(media);
+        this.startPlayback();
       } else {
-        this.countInRemaining = remaining;
+        this.countInRemaining = isBeats ? stepIndex : totalSteps - stepIndex + 1;
         playCountInTone(false);
         this.emitState();
       }
-    }, 1000);
+    }, stepMs);
   }
 
   public cancelCountIn(): void {
@@ -252,24 +381,40 @@ export class ChoreoPlayer {
     }
   }
 
+  private seekInternal(seconds: number): void {
+    const dur = this.getDurationInternal();
+    const target = dur > 0 ? clamp(seconds, 0, dur) : Math.max(0, seconds);
+    if (this.activeKind === 'youtube') {
+      if (this.ytReady && this.ytPlayer) {
+        this.ytPlayer.seekTo(target, true);
+      }
+      return;
+    }
+    const media = this.activeHtmlMedia;
+    if (media) {
+      media.currentTime = target;
+    }
+  }
+
   public seekTo(seconds: number): void {
-    const media = this.activeMedia;
-    if (!media || !Number.isFinite(media.duration) || media.duration <= 0) return;
-    media.currentTime = clamp(seconds, 0, media.duration);
+    if (!this.activeKind) return;
+    this.seekInternal(seconds);
     this.emitTime();
   }
 
   public seekBy(deltaSeconds: number): void {
-    const media = this.activeMedia;
-    if (!media) return;
-    this.seekTo(media.currentTime + deltaSeconds);
+    if (!this.activeKind) return;
+    this.seekTo(this.getCurrentTimeInternal() + deltaSeconds);
   }
 
   public setSpeed(newSpeed: number): void {
     this.speed = clamp(Math.round(newSpeed * 100) / 100, 0.25, 1.25);
-    const media = this.activeMedia;
-    if (media) {
-      this.applyPlaybackRate(media);
+    if (this.activeKind === 'youtube') {
+      if (this.ytReady && this.ytPlayer) {
+        this.ytPlayer.setPlaybackRate(this.speed);
+      }
+    } else if (this.activeHtmlMedia) {
+      this.applyPlaybackRate(this.activeHtmlMedia);
     }
     this.emitState();
     this.callbacks.onSettingsChanged();
@@ -295,18 +440,24 @@ export class ChoreoPlayer {
 
   private applyMirror(): void {
     this.videoEl.classList.toggle('is-mirrored', this.mirror);
+    this.ytContainerEl.classList.toggle('is-mirrored', this.mirror);
   }
 
-  public setCountIn(seconds: number): void {
-    this.countInSeconds = seconds;
+  public setCountInMode(mode: CountInMode): void {
+    this.countInMode = mode;
+    this.emitState();
+    this.callbacks.onSettingsChanged();
+  }
+
+  public setBpm(bpm: number): void {
+    this.bpm = clamp(Math.round(bpm), 40, 240);
     this.emitState();
     this.callbacks.onSettingsChanged();
   }
 
   public setPointA(): void {
-    const media = this.activeMedia;
-    if (!media) return;
-    const t = media.currentTime;
+    if (!this.activeKind) return;
+    const t = this.getCurrentTimeInternal();
     this.pointA = t;
     if (this.pointB !== null && this.pointB <= this.pointA + 0.1) {
       this.pointB = null;
@@ -319,14 +470,14 @@ export class ChoreoPlayer {
   }
 
   public setPointB(): void {
-    const media = this.activeMedia;
-    if (!media) return;
-    const t = media.currentTime;
+    if (!this.activeKind) return;
+    const t = this.getCurrentTimeInternal();
+    const dur = this.getDurationInternal();
     if (this.pointA === null) {
       this.pointA = 0;
     }
     if (t <= this.pointA + 0.1) {
-      this.pointB = clamp(this.pointA + 0.5, 0, media.duration || this.pointA + 0.5);
+      this.pointB = clamp(this.pointA + 0.5, 0, dur || this.pointA + 0.5);
     } else {
       this.pointB = t;
     }
@@ -336,19 +487,19 @@ export class ChoreoPlayer {
   }
 
   public nudgePointA(delta: number): void {
-    const media = this.activeMedia;
-    if (!media || this.pointA === null) return;
-    const maxA = this.pointB !== null ? this.pointB - 0.1 : media.duration || this.pointA + 10;
+    if (!this.activeKind || this.pointA === null) return;
+    const dur = this.getDurationInternal();
+    const maxA = this.pointB !== null ? this.pointB - 0.1 : dur || this.pointA + 10;
     this.pointA = clamp(this.pointA + delta, 0, Math.max(0, maxA));
     this.emitState();
     this.callbacks.onSettingsChanged();
   }
 
   public nudgePointB(delta: number): void {
-    const media = this.activeMedia;
-    if (!media || this.pointB === null) return;
+    if (!this.activeKind || this.pointB === null) return;
+    const dur = this.getDurationInternal();
     const minB = this.pointA !== null ? this.pointA + 0.1 : 0.1;
-    const maxB = media.duration || this.pointB + 10;
+    const maxB = dur || this.pointB + 10;
     this.pointB = clamp(this.pointB + delta, minB, maxB);
     this.emitState();
     this.callbacks.onSettingsChanged();
@@ -359,10 +510,10 @@ export class ChoreoPlayer {
       return;
     }
     this.loopEnabled = !this.loopEnabled;
-    const media = this.activeMedia;
-    if (this.loopEnabled && media) {
-      if (media.currentTime < this.pointA || media.currentTime >= this.pointB) {
-        media.currentTime = this.pointA;
+    if (this.loopEnabled && this.activeKind) {
+      const cur = this.getCurrentTimeInternal();
+      if (cur < this.pointA || cur >= this.pointB) {
+        this.seekInternal(this.pointA);
       }
     }
     this.emitState();
@@ -378,19 +529,18 @@ export class ChoreoPlayer {
   }
 
   public applyBookmark(start: number, end: number): void {
-    const media = this.activeMedia;
     this.pointA = start;
     this.pointB = end;
     this.loopEnabled = true;
-    if (media) {
-      media.currentTime = start;
+    if (this.activeKind) {
+      this.seekInternal(start);
     }
     this.emitTime();
     this.emitState();
     this.callbacks.onSettingsChanged();
   }
 
-  private checkABLoop(media: HTMLMediaElement): void {
+  private checkABLoop(): void {
     if (
       !this.loopEnabled ||
       this.pointA === null ||
@@ -399,20 +549,19 @@ export class ChoreoPlayer {
     ) {
       return;
     }
-    if (media.currentTime >= this.pointB) {
-      media.currentTime = this.pointA;
+    if (this.getCurrentTimeInternal() >= this.pointB) {
+      this.seekInternal(this.pointA);
     }
   }
 
   private startLoopMonitor(): void {
     if (this.rafId !== null) return;
     const tick = () => {
-      const media = this.activeMedia;
-      if (!media || media.paused) {
+      if (!this.isCurrentlyPlaying()) {
         this.rafId = null;
         return;
       }
-      this.checkABLoop(media);
+      this.checkABLoop();
       this.emitTime();
       this.rafId = window.requestAnimationFrame(tick);
     };
@@ -427,16 +576,14 @@ export class ChoreoPlayer {
   }
 
   public getSnapshot(): PlayerStateSnapshot {
-    const media = this.activeMedia;
-    const duration = media && Number.isFinite(media.duration) ? media.duration : 0;
-    const currentTime = media ? media.currentTime : 0;
     return {
-      isPlaying: Boolean(media && !media.paused),
-      currentTime,
-      duration,
+      isPlaying: this.isCurrentlyPlaying(),
+      currentTime: this.getCurrentTimeInternal(),
+      duration: this.getDurationInternal(),
       speed: this.speed,
       mirror: this.mirror,
-      countInSeconds: this.countInSeconds,
+      countInMode: this.countInMode,
+      bpm: this.bpm,
       countInRemaining: this.countInRemaining,
       pointA: this.pointA,
       pointB: this.pointB,
@@ -446,10 +593,8 @@ export class ChoreoPlayer {
   }
 
   private emitTime(): void {
-    const media = this.activeMedia;
-    if (!media) return;
-    const duration = Number.isFinite(media.duration) ? media.duration : 0;
-    this.callbacks.onTimeUpdate(media.currentTime, duration);
+    if (!this.activeKind) return;
+    this.callbacks.onTimeUpdate(this.getCurrentTimeInternal(), this.getDurationInternal());
   }
 
   private emitState(): void {

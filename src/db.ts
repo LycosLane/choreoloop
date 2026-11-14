@@ -38,14 +38,33 @@ function openDB(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
+function normalizeTrackSettings(raw: Partial<TrackMetadata['settings']> | undefined): TrackMetadata['settings'] {
+  const legacySec = (raw as { countInSeconds?: number } | undefined)?.countInSeconds;
+  let countInMode = raw?.countInMode ?? 'off';
+  if (!raw?.countInMode && typeof legacySec === 'number') {
+    countInMode = legacySec === 3 ? '3s' : legacySec === 5 ? '5s' : 'off';
+  }
+  return {
+    speed: raw?.speed ?? 1.0,
+    mirror: raw?.mirror ?? false,
+    countInMode,
+    bpm: raw?.bpm ?? 120,
+    pointA: raw?.pointA ?? null,
+    pointB: raw?.pointB ?? null,
+    loopEnabled: raw?.loopEnabled ?? false,
+  };
+}
+
 export async function listTracks(): Promise<TrackMetadata[]> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(META_STORE, 'readonly');
-    const store = tx.objectStore(META_STORE);
-    const req = store.getAll();
+    const req = tx.objectStore(META_STORE).getAll();
     req.onsuccess = () => {
-      const items = (req.result as TrackMetadata[]) ?? [];
+      const items = ((req.result as TrackMetadata[]) ?? []).map((item) => ({
+        ...item,
+        settings: normalizeTrackSettings(item.settings),
+      }));
       items.sort((a, b) => b.updatedAt - a.updatedAt);
       resolve(items);
     };
@@ -58,26 +77,50 @@ export async function getTrackMeta(id: string): Promise<TrackMetadata | null> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(META_STORE, 'readonly');
     const req = tx.objectStore(META_STORE).get(id);
-    req.onsuccess = () => resolve((req.result as TrackMetadata | undefined) ?? null);
+    req.onsuccess = () => {
+      const item = req.result as TrackMetadata | undefined;
+      if (!item) {
+        resolve(null);
+        return;
+      }
+      resolve({
+        ...item,
+        settings: normalizeTrackSettings(item.settings),
+      });
+    };
     req.onerror = () => reject(req.error ?? new Error('Failed to read track metadata'));
   });
 }
 
-export async function getTrackMedia(id: string): Promise<TrackMediaRecord | null> {
+export async function getTrackMedia(id: string): Promise<Blob | null> {
   const db = await openDB();
   return new Promise((resolve, reject) => {
     const tx = db.transaction(MEDIA_STORE, 'readonly');
     const req = tx.objectStore(MEDIA_STORE).get(id);
-    req.onsuccess = () => resolve((req.result as TrackMediaRecord | undefined) ?? null);
+    req.onsuccess = () => {
+      const rec = req.result as TrackMediaRecord | undefined;
+      if (!rec) {
+        resolve(null);
+        return;
+      }
+      if (rec.data instanceof Blob) {
+        resolve(rec.data);
+      } else {
+        resolve(new Blob([rec.data], { type: rec.mimeType }));
+      }
+    };
     req.onerror = () => reject(req.error ?? new Error('Failed to read track media'));
   });
 }
 
 export async function saveImportedFile(file: File): Promise<TrackMetadata> {
+  if (file.size === 0) {
+    throw new Error('Selected file is empty (0 bytes) or still downloading from cloud storage.');
+  }
+
   const mediaKind = detectMediaKind(file);
   const mimeType = inferMimeType(file, mediaKind);
-  const arrayBuffer = await file.arrayBuffer();
-  const blob = new Blob([arrayBuffer], { type: mimeType });
+  const blob = file.slice(0, file.size, mimeType);
   const duration = await probeMediaDuration(blob, mediaKind);
   const now = Date.now();
 
@@ -91,29 +134,66 @@ export async function saveImportedFile(file: File): Promise<TrackMetadata> {
     createdAt: now,
     updatedAt: now,
     bookmarks: [],
-    settings: {
-      speed: 1.0,
-      mirror: false,
-      countInSeconds: 0,
-      pointA: null,
-      pointB: null,
-      loopEnabled: false,
-    },
+    settings: normalizeTrackSettings(undefined),
   };
 
   const mediaRecord: TrackMediaRecord = {
     id: meta.id,
     mimeType,
-    data: arrayBuffer,
+    data: blob,
+  };
+
+  const db = await openDB();
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const tx = db.transaction([META_STORE, MEDIA_STORE], 'readwrite');
+      tx.objectStore(META_STORE).put(meta);
+      tx.objectStore(MEDIA_STORE).put(mediaRecord);
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error ?? new Error('IndexedDB write failed'));
+      tx.onabort = () => reject(tx.error ?? new Error('IndexedDB transaction aborted'));
+    });
+  } catch (err) {
+    const name = err instanceof DOMException ? err.name : '';
+    if (name === 'QuotaExceededError') {
+      throw new Error(
+        'Not enough browser storage for this file. Delete old tracks in Library or trim/compress large 4K videos first.'
+      );
+    }
+    if (name === 'NotReadableError') {
+      throw new Error('Could not read the file from device storage. If it is in cloud backup, download it locally first.');
+    }
+    throw new Error(
+      'Could not save this file locally. Very large 4K/HEVC phone videos can exceed mobile browser memory limits.'
+    );
+  }
+
+  setLastActiveTrackId(meta.id);
+  return meta;
+}
+
+export async function saveYouTubeTrack(youtubeId: string, title?: string): Promise<TrackMetadata> {
+  const now = Date.now();
+  const meta: TrackMetadata = {
+    id: generateId(),
+    name: title?.trim() || `YouTube (${youtubeId})`,
+    mimeType: 'video/youtube',
+    mediaKind: 'youtube',
+    youtubeId,
+    size: 0,
+    duration: 0,
+    createdAt: now,
+    updatedAt: now,
+    bookmarks: [],
+    settings: normalizeTrackSettings(undefined),
   };
 
   const db = await openDB();
   await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction([META_STORE, MEDIA_STORE], 'readwrite');
+    const tx = db.transaction(META_STORE, 'readwrite');
     tx.objectStore(META_STORE).put(meta);
-    tx.objectStore(MEDIA_STORE).put(mediaRecord);
     tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error ?? new Error('Failed to save track'));
+    tx.onerror = () => reject(tx.error ?? new Error('Failed to save YouTube track'));
   });
 
   setLastActiveTrackId(meta.id);

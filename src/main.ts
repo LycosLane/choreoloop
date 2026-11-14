@@ -6,12 +6,14 @@ import {
   getTrackMeta,
   listTracks,
   saveImportedFile,
+  saveYouTubeTrack,
   setLastActiveTrackId,
   updateTrackMeta,
 } from './db';
 import { ChoreoPlayer, type PlayerStateSnapshot } from './player';
-import type { LoopBookmark, TrackMetadata } from './types';
+import type { CountInMode, LoopBookmark, TrackMetadata } from './types';
 import { clamp, formatBytes, formatTime, generateId } from './utils';
+import { extractYouTubeId } from './youtube';
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -24,17 +26,22 @@ const trackTitleEl = $<HTMLSpanElement>('track-title');
 const libraryCountEl = $<HTMLSpanElement>('library-count');
 const fileInput = $<HTMLInputElement>('file-input');
 
+const stageCardEl = $<HTMLElement>('stage-card');
 const stageEmptyEl = $<HTMLDivElement>('stage-empty');
 const stageVideoWrap = $<HTMLDivElement>('stage-video-wrap');
+const stageYtWrap = $<HTMLDivElement>('stage-yt-wrap');
+const ytContainerEl = $<HTMLDivElement>('yt-container');
 const stageAudioWrap = $<HTMLDivElement>('stage-audio-wrap');
 const videoEl = $<HTMLVideoElement>('video-player');
 const audioEl = $<HTMLAudioElement>('audio-player');
 const mirrorBadgeEl = $<HTMLSpanElement>('mirror-badge');
+const btnFullscreen = $<HTMLButtonElement>('btn-fullscreen');
 const audioDiscEl = $<HTMLDivElement>('audio-disc');
 const audioTrackNameEl = $<HTMLSpanElement>('audio-track-name');
 const audioLoopStatusEl = $<HTMLSpanElement>('audio-loop-status');
 
 const countInOverlay = $<HTMLDivElement>('countin-overlay');
+const countInLabelEl = $<HTMLSpanElement>('countin-label');
 const countInNumberEl = $<HTMLSpanElement>('countin-number');
 const btnCancelCountIn = $<HTMLButtonElement>('btn-cancel-countin');
 
@@ -56,12 +63,18 @@ const btnFwd5 = $<HTMLButtonElement>('btn-fwd-5');
 
 const btnMirror = $<HTMLButtonElement>('btn-mirror');
 const countInButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-countin]'));
+const bpmRowEl = $<HTMLDivElement>('bpm-row');
+const bpmInput = $<HTMLInputElement>('bpm-input');
+const btnBpmMinus = $<HTMLButtonElement>('btn-bpm-minus');
+const btnBpmPlus = $<HTMLButtonElement>('btn-bpm-plus');
+const bpmEffectiveEl = $<HTMLSpanElement>('bpm-effective');
 
 const btnSetA = $<HTMLButtonElement>('btn-set-a');
 const btnSetB = $<HTMLButtonElement>('btn-set-b');
 const btnLoopToggle = $<HTMLButtonElement>('btn-loop-toggle');
 const btnClearAB = $<HTMLButtonElement>('btn-clear-ab');
 
+const stepButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-step]'));
 const btnJumpA = $<HTMLButtonElement>('btn-jump-a');
 const btnJumpB = $<HTMLButtonElement>('btn-jump-b');
 const labelAEl = $<HTMLSpanElement>('label-a');
@@ -81,6 +94,12 @@ const speedReadoutEl = $<HTMLSpanElement>('speed-readout');
 const speedSlider = $<HTMLInputElement>('speed-slider');
 const speedButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-speed]'));
 
+const ytModal = $<HTMLDivElement>('yt-modal');
+const ytForm = $<HTMLFormElement>('yt-form');
+const ytUrlInput = $<HTMLInputElement>('yt-url-input');
+const ytTitleInput = $<HTMLInputElement>('yt-title-input');
+const btnYtPaste = $<HTMLButtonElement>('btn-yt-paste');
+
 const libraryModal = $<HTMLDivElement>('library-modal');
 const libraryListEl = $<HTMLDivElement>('library-list');
 const toastEl = $<HTMLDivElement>('toast');
@@ -91,7 +110,16 @@ const appleTouchIconEl = document.getElementById('apple-touch-icon') as HTMLLink
 const themeColorMetaEl = document.getElementById('theme-color-meta') as HTMLMetaElement | null;
 
 const THEME_KEY = 'choreoloop:theme';
+const NUDGE_STEP_KEY = 'choreoloop:nudgeStep';
 type AppTheme = 'dark' | 'light';
+
+// App State
+let tracks: TrackMetadata[] = [];
+let activeTrack: TrackMetadata | null = null;
+let toastTimer: number | null = null;
+let saveDebounceTimer: number | null = null;
+let nudgeStep = 0.1;
+let isStageFullscreen = false;
 
 function applyTheme(theme: AppTheme): void {
   document.documentElement.dataset.theme = theme;
@@ -128,31 +156,50 @@ function initTheme(): void {
   applyTheme(saved);
 }
 
-btnTheme.addEventListener('click', () => {
-  const current = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
-  applyTheme(current === 'light' ? 'dark' : 'light');
-});
+function setNudgeStep(step: number): void {
+  nudgeStep = step;
+  for (const btn of stepButtons) {
+    btn.classList.toggle('is-active', Number(btn.dataset.step) === step);
+  }
+  const label = `${step}s`;
+  btnAMinus.textContent = `-${label}`;
+  btnAPlus.textContent = `+${label}`;
+  btnBMinus.textContent = `-${label}`;
+  btnBPlus.textContent = `+${label}`;
+  try {
+    localStorage.setItem(NUDGE_STEP_KEY, String(step));
+  } catch {
+    // Ignore storage errors
+  }
+}
 
-// App State
-let tracks: TrackMetadata[] = [];
-let activeTrack: TrackMetadata | null = null;
-let toastTimer: number | null = null;
-let saveDebounceTimer: number | null = null;
+function initNudgeStep(): void {
+  try {
+    const raw = Number(localStorage.getItem(NUDGE_STEP_KEY));
+    if (raw === 0.1 || raw === 0.25 || raw === 0.5) {
+      setNudgeStep(raw);
+      return;
+    }
+  } catch {
+    // Default
+  }
+  setNudgeStep(0.1);
+}
 
-function showToast(message: string): void {
+function showToast(message: string, durationMs = 2800): void {
   toastEl.textContent = message;
   toastEl.classList.remove('hidden');
   if (toastTimer !== null) window.clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => {
     toastEl.classList.add('hidden');
-  }, 2600);
+  }, durationMs);
 }
 
-const player = new ChoreoPlayer(videoEl, audioEl, {
+const player = new ChoreoPlayer(videoEl, audioEl, ytContainerEl, {
   onStateChange: (snapshot) => renderPlayerState(snapshot),
   onTimeUpdate: (currentTime, duration) => renderTimeline(currentTime, duration),
   onSettingsChanged: () => scheduleSaveTrackSettings(),
-  onError: (msg) => showToast(msg),
+  onError: (msg) => showToast(msg, 5200),
 });
 
 function scheduleSaveTrackSettings(): void {
@@ -161,7 +208,8 @@ function scheduleSaveTrackSettings(): void {
   activeTrack.settings = {
     speed: snap.speed,
     mirror: snap.mirror,
-    countInSeconds: snap.countInSeconds,
+    countInMode: snap.countInMode,
+    bpm: snap.bpm,
     pointA: snap.pointA,
     pointB: snap.pointB,
     loopEnabled: snap.loopEnabled,
@@ -176,15 +224,23 @@ function scheduleSaveTrackSettings(): void {
 
 function renderPlayerState(snap: PlayerStateSnapshot): void {
   const hasMedia = snap.mediaKind !== null;
+  const hasVisualStage = snap.mediaKind === 'video' || snap.mediaKind === 'youtube';
 
   // Stage visibility
   stageEmptyEl.classList.toggle('hidden', hasMedia);
   stageVideoWrap.classList.toggle('hidden', snap.mediaKind !== 'video');
+  stageYtWrap.classList.toggle('hidden', snap.mediaKind !== 'youtube');
   stageAudioWrap.classList.toggle('hidden', snap.mediaKind !== 'audio');
+  btnFullscreen.classList.toggle('hidden', !hasVisualStage);
+  if (!hasVisualStage && isStageFullscreen) {
+    setStageFullscreen(false);
+  }
 
   // Count-In overlay
   if (snap.countInRemaining !== null) {
     countInOverlay.classList.remove('hidden');
+    const isBeats = snap.countInMode === '4beats' || snap.countInMode === '8beats';
+    countInLabelEl.textContent = isBeats ? `BEAT COUNT (${Math.round(snap.bpm * snap.speed)} BPM)` : 'GET READY';
     countInNumberEl.textContent = String(snap.countInRemaining);
   } else {
     countInOverlay.classList.add('hidden');
@@ -208,13 +264,20 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
   btnMirror.classList.toggle('is-active', snap.mirror);
   btnMirror.setAttribute('aria-pressed', String(snap.mirror));
   btnMirror.textContent = snap.mirror ? 'Mirror: On' : 'Mirror: Off';
-  mirrorBadgeEl.classList.toggle('hidden', !snap.mirror || snap.mediaKind !== 'video');
+  mirrorBadgeEl.classList.toggle('hidden', !snap.mirror || !hasVisualStage);
 
-  // Count-in chips
+  // Count-in chips & BPM row
   for (const btn of countInButtons) {
-    const val = Number(btn.dataset.countin);
-    btn.classList.toggle('is-active', val === snap.countInSeconds);
+    btn.classList.toggle('is-active', btn.dataset.countin === snap.countInMode);
   }
+  const showBpm = snap.countInMode === '4beats' || snap.countInMode === '8beats';
+  bpmRowEl.classList.toggle('hidden', !showBpm);
+  if (document.activeElement !== bpmInput) {
+    bpmInput.value = String(snap.bpm);
+  }
+  const effectiveBpm = Math.round(snap.bpm * snap.speed);
+  bpmEffectiveEl.textContent =
+    Math.abs(snap.speed - 1.0) < 0.01 ? `${snap.bpm} BPM` : `${effectiveBpm} eff. BPM`;
 
   // A-B Loop buttons
   const hasA = snap.pointA !== null;
@@ -301,7 +364,7 @@ function renderBookmarks(): void {
   if (!activeTrack || activeTrack.bookmarks.length === 0) {
     const hint = document.createElement('span');
     hint.className = 'empty-hint';
-    hint.textContent = 'Set A and B, then tap "+ Save Loop" to bookmark sections.';
+    hint.textContent = 'Set A and B, then tap "+ Save" to bookmark sections.';
     bookmarksListEl.appendChild(hint);
     return;
   }
@@ -347,7 +410,7 @@ function renderLibrary(): void {
   if (tracks.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'empty-hint';
-    empty.textContent = 'No tracks imported yet. Tap "+ Import" to add audio or video.';
+    empty.textContent = 'No tracks yet. Tap "+ File" or "+ YT" to add audio, video, or YouTube.';
     libraryListEl.appendChild(empty);
     return;
   }
@@ -359,12 +422,14 @@ function renderLibrary(): void {
     const mainBtn = document.createElement('button');
     mainBtn.type = 'button';
     mainBtn.className = 'library-item-main';
-    const kindLabel = track.mediaKind === 'video' ? 'VIDEO' : 'AUDIO';
+    const kindLabel =
+      track.mediaKind === 'youtube' ? 'YOUTUBE' : track.mediaKind === 'video' ? 'VIDEO' : 'AUDIO';
     const durLabel = track.duration > 0 ? formatTime(track.duration, false) : '--:--';
+    const sizeOrNet = track.mediaKind === 'youtube' ? 'Online' : formatBytes(track.size);
     const bmCount = track.bookmarks.length;
     mainBtn.innerHTML = `
       <span class="library-item-title">${escapeHtml(track.name)}</span>
-      <span class="library-item-meta">${kindLabel} · ${durLabel} · ${formatBytes(track.size)} · ${bmCount} loop${bmCount === 1 ? '' : 's'}</span>
+      <span class="library-item-meta">${kindLabel} · ${durLabel} · ${sizeOrNet} · ${bmCount} loop${bmCount === 1 ? '' : 's'}</span>
     `;
     mainBtn.addEventListener('click', () => {
       void selectTrack(track.id);
@@ -392,9 +457,8 @@ async function refreshTrackList(): Promise<void> {
 
 async function selectTrack(id: string): Promise<void> {
   const meta = await getTrackMeta(id);
-  const media = await getTrackMedia(id);
-  if (!meta || !media) {
-    showToast('Track data not found.');
+  if (!meta) {
+    showToast('Track metadata not found.');
     return;
   }
 
@@ -403,8 +467,19 @@ async function selectTrack(id: string): Promise<void> {
   trackTitleEl.textContent = meta.name;
   audioTrackNameEl.textContent = meta.name;
 
-  const blob = new Blob([media.data], { type: media.mimeType });
-  player.loadMedia(blob, meta.mediaKind, meta.settings);
+  if (meta.mediaKind === 'youtube' && meta.youtubeId) {
+    await player.loadYouTube(meta.youtubeId, meta.settings);
+    renderLibrary();
+    return;
+  }
+
+  const blob = await getTrackMedia(id);
+  if (!blob) {
+    showToast('Track media data not found in local storage.');
+    return;
+  }
+
+  player.loadMedia(blob, meta.mediaKind === 'video' ? 'video' : 'audio', meta.settings);
   renderLibrary();
 }
 
@@ -418,7 +493,8 @@ async function handleFilesImported(files: FileList | null): Promise<void> {
       lastImported = await saveImportedFile(file);
     } catch (err) {
       console.error(err);
-      showToast(`Failed to import ${file.name}`);
+      const msg = err instanceof Error ? err.message : `Failed to import ${file.name}`;
+      showToast(msg, 5500);
     }
   }
 
@@ -428,6 +504,19 @@ async function handleFilesImported(files: FileList | null): Promise<void> {
     showToast(`Ready: ${lastImported.name}`);
   }
   fileInput.value = '';
+}
+
+async function handleYouTubeImport(urlOrId: string, title?: string): Promise<void> {
+  const videoId = extractYouTubeId(urlOrId);
+  if (!videoId) {
+    showToast('Invalid YouTube URL or Video ID.', 3500);
+    return;
+  }
+  const meta = await saveYouTubeTrack(videoId, title);
+  await refreshTrackList();
+  await selectTrack(meta.id);
+  closeYtModal();
+  showToast('YouTube video loaded');
 }
 
 async function handleDeleteTrack(id: string): Promise<void> {
@@ -470,6 +559,23 @@ async function removeBookmark(bookmarkId: string): Promise<void> {
   await updateTrackMeta(activeTrack);
   await refreshTrackList();
   renderBookmarks();
+}
+
+function setStageFullscreen(active: boolean): void {
+  isStageFullscreen = active;
+  stageCardEl.classList.toggle('is-fullscreen', active);
+  btnFullscreen.textContent = active ? 'Exit' : 'Fullscreen';
+}
+
+function openYtModal(): void {
+  ytModal.classList.remove('hidden');
+  ytUrlInput.focus();
+}
+
+function closeYtModal(): void {
+  ytModal.classList.add('hidden');
+  ytUrlInput.value = '';
+  ytTitleInput.value = '';
 }
 
 function openLibraryModal(): void {
@@ -523,12 +629,44 @@ scrubberEl.addEventListener('pointercancel', () => {
 });
 
 // Event Listeners
+btnTheme.addEventListener('click', () => {
+  const current = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+  applyTheme(current === 'light' ? 'dark' : 'light');
+});
+
 const triggerImport = () => fileInput.click();
 $('btn-import-top').addEventListener('click', triggerImport);
 $('btn-import-empty').addEventListener('click', triggerImport);
 $('btn-import-modal').addEventListener('click', triggerImport);
 fileInput.addEventListener('change', () => {
   void handleFilesImported(fileInput.files);
+});
+
+$('btn-yt-top').addEventListener('click', openYtModal);
+$('btn-yt-empty').addEventListener('click', openYtModal);
+$('btn-close-yt').addEventListener('click', closeYtModal);
+ytModal.addEventListener('click', (e) => {
+  if (e.target === ytModal) closeYtModal();
+});
+btnYtPaste.addEventListener('click', () => {
+  if (!navigator.clipboard?.readText) {
+    showToast('Clipboard paste unavailable; paste directly into the field.');
+    return;
+  }
+  void navigator.clipboard
+    .readText()
+    .then((text) => {
+      ytUrlInput.value = text.trim();
+    })
+    .catch(() => showToast('Allow clipboard permission or paste directly.'));
+});
+ytForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  void handleYouTubeImport(ytUrlInput.value, ytTitleInput.value);
+});
+
+btnFullscreen.addEventListener('click', () => {
+  setStageFullscreen(!isStageFullscreen);
 });
 
 $('btn-library').addEventListener('click', openLibraryModal);
@@ -546,7 +684,20 @@ btnMirror.addEventListener('click', () => player.toggleMirror());
 
 for (const btn of countInButtons) {
   btn.addEventListener('click', () => {
-    player.setCountIn(Number(btn.dataset.countin));
+    player.setCountInMode((btn.dataset.countin ?? 'off') as CountInMode);
+  });
+}
+
+bpmInput.addEventListener('change', () => {
+  const val = Number(bpmInput.value);
+  if (Number.isFinite(val)) player.setBpm(val);
+});
+btnBpmMinus.addEventListener('click', () => player.setBpm(player.getSnapshot().bpm - 5));
+btnBpmPlus.addEventListener('click', () => player.setBpm(player.getSnapshot().bpm + 5));
+
+for (const btn of stepButtons) {
+  btn.addEventListener('click', () => {
+    setNudgeStep(Number(btn.dataset.step));
   });
 }
 
@@ -564,10 +715,10 @@ btnJumpB.addEventListener('click', () => {
   if (b !== null) player.seekTo(b);
 });
 
-btnAMinus.addEventListener('click', () => player.nudgePointA(-0.5));
-btnAPlus.addEventListener('click', () => player.nudgePointA(0.5));
-btnBMinus.addEventListener('click', () => player.nudgePointB(-0.5));
-btnBPlus.addEventListener('click', () => player.nudgePointB(0.5));
+btnAMinus.addEventListener('click', () => player.nudgePointA(-nudgeStep));
+btnAPlus.addEventListener('click', () => player.nudgePointA(nudgeStep));
+btnBMinus.addEventListener('click', () => player.nudgePointB(-nudgeStep));
+btnBPlus.addEventListener('click', () => player.nudgePointB(nudgeStep));
 
 btnSaveBookmark.addEventListener('click', () => {
   bookmarkForm.classList.remove('hidden');
@@ -601,7 +752,9 @@ speedSlider.addEventListener('input', () => {
 // Keyboard shortcuts for desktop testing
 window.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-  if (e.code === 'Space') {
+  if (e.code === 'Escape' && isStageFullscreen) {
+    setStageFullscreen(false);
+  } else if (e.code === 'Space') {
     e.preventDefault();
     player.togglePlay();
   } else if (e.key === 'a' || e.key === 'A') {
@@ -624,11 +777,28 @@ if ('serviceWorker' in navigator) {
   });
 }
 
+// Handle ?yt=... or Android PWA share_target (?url=... / ?text=...)
+async function checkIncomingSharedLink(): Promise<boolean> {
+  const params = new URLSearchParams(window.location.search);
+  const candidate = params.get('yt') || params.get('url') || params.get('text') || '';
+  const sharedTitle = params.get('title') || undefined;
+  const videoId = extractYouTubeId(candidate);
+  if (!videoId) return false;
+
+  window.history.replaceState({}, '', window.location.pathname);
+  await handleYouTubeImport(videoId, sharedTitle);
+  return true;
+}
+
 // Initialize App
 async function init(): Promise<void> {
   initTheme();
+  initNudgeStep();
   renderPlayerState(player.getSnapshot());
   await refreshTrackList();
+
+  const handledShared = await checkIncomingSharedLink();
+  if (handledShared) return;
 
   const lastId = getLastActiveTrackId();
   if (lastId && tracks.some((t) => t.id === lastId)) {
