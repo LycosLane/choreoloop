@@ -14,6 +14,7 @@ export interface TrackSettings {
   speed: number;
   mirror: boolean;
   countInMode: CountInMode;
+  repeatCountInOnLoop: boolean;
   bpm: number;
   pointA: number | null;
   pointB: number | null;

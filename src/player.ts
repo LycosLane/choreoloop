@@ -9,6 +9,7 @@ export interface PlayerStateSnapshot {
   speed: number;
   mirror: boolean;
   countInMode: CountInMode;
+  repeatCountInOnLoop: boolean;
   bpm: number;
   countInRemaining: number | null;
   pointA: number | null;
@@ -55,6 +56,7 @@ export class ChoreoPlayer {
   private speed = 1.0;
   private mirror = false;
   private countInMode: CountInMode = 'off';
+  private repeatCountInOnLoop = true;
   private bpm = 120;
   private countInRemaining: number | null = null;
   private pointA: number | null = null;
@@ -219,6 +221,7 @@ export class ChoreoPlayer {
     this.speed = clamp(settings.speed, 0.25, 1.25);
     this.mirror = settings.mirror;
     this.countInMode = settings.countInMode;
+    this.repeatCountInOnLoop = settings.repeatCountInOnLoop ?? true;
     this.bpm = clamp(settings.bpm || 120, 40, 240);
     this.pointA = settings.pointA;
     this.pointB = settings.pointB;
@@ -479,6 +482,12 @@ export class ChoreoPlayer {
     this.callbacks.onSettingsChanged();
   }
 
+  public toggleRepeatCountInOnLoop(): void {
+    this.repeatCountInOnLoop = !this.repeatCountInOnLoop;
+    this.emitState();
+    this.callbacks.onSettingsChanged();
+  }
+
   public setBpm(bpm: number): void {
     this.bpm = clamp(Math.round(bpm), 40, 240);
     this.emitState();
@@ -581,6 +590,11 @@ export class ChoreoPlayer {
     }
     if (this.getCurrentTimeInternal() >= this.pointB) {
       this.seekInternal(this.pointA);
+      if (this.countInMode !== 'off' && this.repeatCountInOnLoop && this.countInRemaining === null) {
+        this.pauseNow();
+        this.stopLoopMonitor();
+        this.startCountIn();
+      }
     }
   }
 
@@ -613,6 +627,7 @@ export class ChoreoPlayer {
       speed: this.speed,
       mirror: this.mirror,
       countInMode: this.countInMode,
+      repeatCountInOnLoop: this.repeatCountInOnLoop,
       bpm: this.bpm,
       countInRemaining: this.countInRemaining,
       pointA: this.pointA,

@@ -64,6 +64,7 @@ const btnFwd5 = $<HTMLButtonElement>('btn-fwd-5');
 
 const btnMirror = $<HTMLButtonElement>('btn-mirror');
 const countInButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-countin]'));
+const btnLoopCountIn = $<HTMLButtonElement>('btn-loop-countin');
 const bpmRowEl = $<HTMLDivElement>('bpm-row');
 const bpmInput = $<HTMLInputElement>('bpm-input');
 const btnBpmMinus = $<HTMLButtonElement>('btn-bpm-minus');
@@ -222,6 +223,7 @@ function scheduleSaveTrackSettings(): void {
     speed: snap.speed,
     mirror: snap.mirror,
     countInMode: snap.countInMode,
+    repeatCountInOnLoop: snap.repeatCountInOnLoop,
     bpm: snap.bpm,
     pointA: snap.pointA,
     pointB: snap.pointB,
@@ -288,6 +290,12 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
   for (const btn of countInButtons) {
     btn.classList.toggle('is-active', btn.dataset.countin === snap.countInMode);
   }
+  const hasCountIn = snap.countInMode !== 'off';
+  btnLoopCountIn.classList.toggle('hidden', !hasCountIn);
+  btnLoopCountIn.classList.toggle('is-active', snap.repeatCountInOnLoop);
+  btnLoopCountIn.setAttribute('aria-pressed', String(snap.repeatCountInOnLoop));
+  btnLoopCountIn.textContent = snap.repeatCountInOnLoop ? 'Every Loop: On' : 'Every Loop: Off';
+
   const showBpm = snap.countInMode === '4beats' || snap.countInMode === '8beats';
   bpmRowEl.classList.toggle('hidden', !showBpm);
   if (document.activeElement !== bpmInput) {
@@ -693,6 +701,10 @@ $('btn-yt-top').addEventListener('click', () => {
   closeHeaderMenu();
   openYtModal();
 });
+$('btn-yt-modal').addEventListener('click', () => {
+  closeLibraryModal();
+  openYtModal();
+});
 $('btn-yt-empty').addEventListener('click', openYtModal);
 $('btn-close-yt').addEventListener('click', closeYtModal);
 ytModal.addEventListener('click', (e) => {
@@ -768,6 +780,10 @@ for (const btn of countInButtons) {
     player.setCountInMode((btn.dataset.countin ?? 'off') as CountInMode);
   });
 }
+
+btnLoopCountIn.addEventListener('click', () => {
+  player.toggleRepeatCountInOnLoop();
+});
 
 bpmInput.addEventListener('change', () => {
   const val = Number(bpmInput.value);

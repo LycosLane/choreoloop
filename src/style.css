@@ -664,6 +664,13 @@ button:disabled {
   color: var(--cyan);
 }
 
+.countin-section {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .countin-group {
   display: flex;
   align-items: center;

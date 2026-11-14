@@ -192,12 +192,18 @@
             <button id="btn-mirror" class="btn-toggle" type="button" aria-pressed="false">
               Mirror: Off
             </button>
-            <div class="countin-group" role="group" aria-label="Count-in timer">
-              <button class="btn-chip is-active" data-countin="off" type="button">Off</button>
-              <button class="btn-chip" data-countin="3s" type="button">3s</button>
-              <button class="btn-chip" data-countin="5s" type="button">5s</button>
-              <button class="btn-chip" data-countin="4beats" type="button">4 Beats</button>
-              <button class="btn-chip" data-countin="8beats" type="button">8 Beats</button>
+            <div class="countin-section">
+              <span class="group-label">Count-In</span>
+              <div class="countin-group" role="group" aria-label="Count-in timer">
+                <button class="btn-chip is-active" data-countin="off" type="button">Off</button>
+                <button class="btn-chip" data-countin="3s" type="button">3s</button>
+                <button class="btn-chip" data-countin="5s" type="button">5s</button>
+                <button class="btn-chip" data-countin="4beats" type="button">4 Beats</button>
+                <button class="btn-chip" data-countin="8beats" type="button">8 Beats</button>
+              </div>
+              <button id="btn-loop-countin" class="btn-chip hidden" type="button" aria-pressed="true">
+                Every Loop: On
+              </button>
             </div>
           </div>
 
@@ -455,6 +461,7 @@
               <button id="btn-clear-library" class="btn-pill btn-danger-outline" type="button" disabled>
                 Clear All
               </button>
+              <button id="btn-yt-modal" class="btn-pill btn-surface" type="button">+ YT</button>
               <button id="btn-import-modal" class="btn-pill btn-accent" type="button">+ File</button>
               <button id="btn-close-library" class="btn-pill btn-surface" type="button">Close</button>
             </div>

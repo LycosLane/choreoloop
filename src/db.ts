@@ -48,6 +48,7 @@ function normalizeTrackSettings(raw: Partial<TrackMetadata['settings']> | undefi
     speed: raw?.speed ?? 1.0,
     mirror: raw?.mirror ?? false,
     countInMode,
+    repeatCountInOnLoop: raw?.repeatCountInOnLoop ?? true,
     bpm: raw?.bpm ?? 120,
     pointA: raw?.pointA ?? null,
     pointB: raw?.pointB ?? null,
