@@ -1,5 +1,6 @@
 import './style.css';
 import {
+  clearAllTracks,
   deleteTrack,
   getLastActiveTrackId,
   getTrackMedia,
@@ -107,6 +108,9 @@ const guideModal = $<HTMLDivElement>('guide-modal');
 
 const libraryModal = $<HTMLDivElement>('library-modal');
 const libraryListEl = $<HTMLDivElement>('library-list');
+const btnClearLibrary = $<HTMLButtonElement>('btn-clear-library');
+const libraryConfirmEl = $<HTMLDivElement>('library-confirm');
+const libraryConfirmTextEl = $<HTMLSpanElement>('library-confirm-text');
 const toastEl = $<HTMLDivElement>('toast');
 
 const btnTheme = $<HTMLButtonElement>('btn-theme');
@@ -419,6 +423,10 @@ function renderBookmarks(): void {
 
 function renderLibrary(): void {
   libraryCountEl.textContent = String(tracks.length);
+  btnClearLibrary.disabled = tracks.length === 0;
+  if (tracks.length === 0) {
+    libraryConfirmEl.classList.add('hidden');
+  }
   libraryListEl.innerHTML = '';
 
   if (tracks.length === 0) {
@@ -594,11 +602,13 @@ function closeYtModal(): void {
 }
 
 function openLibraryModal(): void {
+  libraryConfirmEl.classList.add('hidden');
   renderLibrary();
   libraryModal.classList.remove('hidden');
 }
 
 function closeLibraryModal(): void {
+  libraryConfirmEl.classList.add('hidden');
   libraryModal.classList.add('hidden');
 }
 
@@ -713,6 +723,28 @@ $('btn-library').addEventListener('click', openLibraryModal);
 $('btn-close-library').addEventListener('click', closeLibraryModal);
 libraryModal.addEventListener('click', (e) => {
   if (e.target === libraryModal) closeLibraryModal();
+});
+
+btnClearLibrary.addEventListener('click', () => {
+  if (tracks.length === 0) return;
+  libraryConfirmTextEl.textContent = `Remove all ${tracks.length} track${tracks.length === 1 ? '' : 's'} from ChoreoLoop? Your original files on this device are never touched.`;
+  libraryConfirmEl.classList.remove('hidden');
+});
+
+$('btn-confirm-clear-cancel').addEventListener('click', () => {
+  libraryConfirmEl.classList.add('hidden');
+});
+
+$('btn-confirm-clear-yes').addEventListener('click', () => {
+  void (async () => {
+    await clearAllTracks();
+    activeTrack = null;
+    trackTitleEl.textContent = 'No track loaded';
+    player.unload();
+    libraryConfirmEl.classList.add('hidden');
+    await refreshTrackList();
+    showToast('Library cleared');
+  })();
 });
 
 $('btn-guide').addEventListener('click', () => {

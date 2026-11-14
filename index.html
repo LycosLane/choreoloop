@@ -452,8 +452,20 @@
           <div class="modal-header">
             <h2 class="modal-title">Local Library</h2>
             <div class="modal-actions">
+              <button id="btn-clear-library" class="btn-pill btn-danger-outline" type="button" disabled>
+                Clear All
+              </button>
               <button id="btn-import-modal" class="btn-pill btn-accent" type="button">+ File</button>
               <button id="btn-close-library" class="btn-pill btn-surface" type="button">Close</button>
+            </div>
+          </div>
+          <div id="library-confirm" class="confirm-banner hidden" role="alert">
+            <span id="library-confirm-text" class="confirm-text">
+              Remove all tracks from ChoreoLoop? Your original files on this device are never touched.
+            </span>
+            <div class="confirm-actions">
+              <button id="btn-confirm-clear-cancel" class="btn-mini btn-surface" type="button">Cancel</button>
+              <button id="btn-confirm-clear-yes" class="btn-mini btn-danger" type="button">Remove All</button>
             </div>
           </div>
           <p class="modal-note">

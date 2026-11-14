@@ -225,6 +225,18 @@ export async function deleteTrack(id: string): Promise<void> {
   }
 }
 
+export async function clearAllTracks(): Promise<void> {
+  const db = await openDB();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction([META_STORE, MEDIA_STORE], 'readwrite');
+    tx.objectStore(META_STORE).clear();
+    tx.objectStore(MEDIA_STORE).clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error ?? new Error('Failed to clear library'));
+  });
+  setLastActiveTrackId(null);
+}
+
 export function getLastActiveTrackId(): string | null {
   try {
     return localStorage.getItem(LAST_TRACK_KEY);
