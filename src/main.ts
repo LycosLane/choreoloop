@@ -85,6 +85,54 @@ const libraryModal = $<HTMLDivElement>('library-modal');
 const libraryListEl = $<HTMLDivElement>('library-list');
 const toastEl = $<HTMLDivElement>('toast');
 
+const btnTheme = $<HTMLButtonElement>('btn-theme');
+const faviconLinkEl = document.getElementById('favicon-link') as HTMLLinkElement | null;
+const appleTouchIconEl = document.getElementById('apple-touch-icon') as HTMLLinkElement | null;
+const themeColorMetaEl = document.getElementById('theme-color-meta') as HTMLMetaElement | null;
+
+const THEME_KEY = 'choreoloop:theme';
+type AppTheme = 'dark' | 'light';
+
+function applyTheme(theme: AppTheme): void {
+  document.documentElement.dataset.theme = theme;
+  const isLight = theme === 'light';
+  const svgIcon = isLight ? './icons/choreoloop-light.svg' : './icons/choreoloop.svg';
+  const appleIcon = isLight ? './icons/apple-touch-icon-light.png' : './icons/apple-touch-icon.png';
+
+  if (faviconLinkEl) faviconLinkEl.href = svgIcon;
+  if (appleTouchIconEl) appleTouchIconEl.href = appleIcon;
+  if (themeColorMetaEl) themeColorMetaEl.content = isLight ? '#F8FAFC' : '#101216';
+
+  document.querySelectorAll<HTMLImageElement>('[data-theme-logo]').forEach((img) => {
+    img.src = svgIcon;
+  });
+
+  btnTheme.textContent = isLight ? 'Dark' : 'Light';
+  btnTheme.setAttribute('aria-label', isLight ? 'Switch to dark mode' : 'Switch to light mode');
+
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function initTheme(): void {
+  let saved: AppTheme = 'dark';
+  try {
+    const raw = localStorage.getItem(THEME_KEY);
+    if (raw === 'light' || raw === 'dark') saved = raw;
+  } catch {
+    // Default to dark
+  }
+  applyTheme(saved);
+}
+
+btnTheme.addEventListener('click', () => {
+  const current = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
+  applyTheme(current === 'light' ? 'dark' : 'light');
+});
+
 // App State
 let tracks: TrackMetadata[] = [];
 let activeTrack: TrackMetadata | null = null;
@@ -578,6 +626,7 @@ if ('serviceWorker' in navigator) {
 
 // Initialize App
 async function init(): Promise<void> {
+  initTheme();
   renderPlayerState(player.getSnapshot());
   await refreshTrackList();
 

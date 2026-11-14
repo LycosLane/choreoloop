@@ -11,15 +11,15 @@
       name="description"
       content="Offline-first PWA for dancers with A-B looping, slow-motion speed control, video mirror mode, and count-in timer."
     />
-    <meta name="theme-color" content="#101216" />
+    <meta id="theme-color-meta" name="theme-color" content="#101216" />
 
     <!-- iOS Home Screen PWA support -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="ChoreoLoop" />
-    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link id="apple-touch-icon" rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
 
-    <link rel="icon" type="image/svg+xml" href="./icons/choreoloop.svg" />
+    <link id="favicon-link" rel="icon" type="image/svg+xml" href="./icons/choreoloop.svg" />
     <link rel="manifest" href="./manifest.json" />
   </head>
   <body>
@@ -27,13 +27,16 @@
       <!-- Top Header -->
       <header class="top-bar">
         <div class="brand">
-          <img src="./icons/choreoloop.svg" alt="ChoreoLoop" class="brand-icon" />
+          <img src="./icons/choreoloop.svg" alt="ChoreoLoop" class="brand-icon" data-theme-logo />
           <div class="brand-text">
             <span class="brand-name">ChoreoLoop</span>
             <span id="track-title" class="track-subtitle">No track loaded</span>
           </div>
         </div>
         <div class="top-actions">
+          <button id="btn-theme" class="btn-pill btn-surface" type="button" aria-label="Switch theme">
+            Light
+          </button>
           <button id="btn-import-top" class="btn-pill btn-accent" type="button" aria-label="Import media">
             + Import
           </button>
@@ -58,7 +61,7 @@
         <section class="stage-card" aria-label="Media stage">
           <!-- Empty State -->
           <div id="stage-empty" class="stage-empty">
-            <img src="./icons/choreoloop.svg" alt="" class="empty-logo" />
+            <img src="./icons/choreoloop.svg" alt="" class="empty-logo" data-theme-logo />
             <h1 class="empty-title">Ready to Practice</h1>
             <p class="empty-desc">
               Import music or dance videos (MP3, M4A, WAV, MP4, MOV). Everything stays 100% offline on your device.
@@ -83,7 +86,7 @@
           <!-- Audio Stage -->
           <div id="stage-audio-wrap" class="stage-audio-wrap hidden">
             <div class="audio-disc" id="audio-disc">
-              <img src="./icons/choreoloop.svg" alt="" class="audio-disc-icon" />
+              <img src="./icons/choreoloop.svg" alt="" class="audio-disc-icon" data-theme-logo />
             </div>
             <div class="audio-meta">
               <span id="audio-track-name" class="audio-track-name">Track</span>
