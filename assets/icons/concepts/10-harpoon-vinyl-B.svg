@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="112" fill="#101216"/>
+  <!-- Concept 10: Vinyl Ring + Harpoon Arrows + Pure Crown (Ear-Cups Under Brim) -->
+  <circle cx="256" cy="256" r="188" fill="none" stroke="#1E222B" stroke-width="14"/>
+  <g fill="none" stroke-width="14" stroke-linecap="round">
+    <path d="M 96 156 A 188 188 0 0 1 400 134" stroke="#00B4FF"/>
+    <path d="M 416 356 A 188 188 0 0 1 112 378" stroke="#F43F5E"/>
+  </g>
+  <!-- Single-Sided Outer Harpoon Arrowheads -->
+  <path d="M 405 139 L 368 94 L 352 114 Z" fill="#00B4FF"/>
+  <circle cx="400" cy="134" r="7" fill="#00B4FF"/>
+  <path d="M 107 373 L 144 418 L 160 398 Z" fill="#F43F5E"/>
+  <circle cx="112" cy="378" r="7" fill="#F43F5E"/>
+
+  <!-- White Fedora (-6 deg) with Under-Brim Ear-Cups & Neckband -->
+  <g transform="translate(256, 240) scale(0.75) translate(-256, -258) rotate(-6 256 256)">
+    <!-- Under-Brim Ear-Cups (anatomical ear position) -->
+    <rect x="132" y="348" width="46" height="74" rx="20" fill="#00B4FF"/>
+    <rect x="334" y="348" width="46" height="74" rx="20" fill="#F43F5E"/>
+    <!-- Subtle Back-of-Head/Neck Arc connecting cups -->
+    <path d="M 155 412 Q 256 446 357 412" fill="none" stroke="#2B313E" stroke-width="12" stroke-linecap="round"/>
+
+    <!-- Pure Unobstructed White Fedora Crown -->
+    <path d="M 162 252 L 186 162 L 208 150 L 256 196 L 304 150 L 326 162 L 350 252 Q 256 264 162 252 Z" fill="#FFFFFF"/>
+    <path d="M 220 154 L 256 165 L 292 154 L 256 186 Z" fill="#FFFFFF"/>
+    <!-- Modular Two-Tone Hatband -->
+    <path d="M 159 264 Q 232 273 300 269 L 305 305 Q 234 310 151 300 Z" fill="#00B4FF"/>
+    <path d="M 315 268 Q 334 266 353 264 L 361 300 Q 342 303 320 305 Z" fill="#F43F5E"/>
+    <!-- Brim -->
+    <path d="M 86 312 L 150 312 Q 256 326 362 312 L 426 312 C 394 362, 330 384, 256 384 C 182 384, 118 362, 86 312 Z" fill="#FFFFFF"/>
+  </g>
+</svg>

@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="112" fill="#101216"/>
+  <!-- Concept 9: Vinyl Ring + One-Sided Outer Harpoon Arrows + Tucked Headphones -->
+  <circle cx="256" cy="256" r="188" fill="none" stroke="#1E222B" stroke-width="14"/>
+  <g fill="none" stroke-width="14" stroke-linecap="round">
+    <!-- Top Cyan Arc ending at (400, 134) -->
+    <path d="M 96 156 A 188 188 0 0 1 400 134" stroke="#00B4FF"/>
+    <!-- Bottom Rose Arc ending at (112, 378) -->
+    <path d="M 416 356 A 188 188 0 0 1 112 378" stroke="#F43F5E"/>
+  </g>
+  <!-- Single-Sided Outer Harpoon Arrowheads -->
+  <!-- Top Cyan Harpoon (outer barb only) -->
+  <path d="M 405 139 L 368 94 L 352 114 Z" fill="#00B4FF"/>
+  <circle cx="400" cy="134" r="7" fill="#00B4FF"/>
+  <!-- Bottom Rose Harpoon (outer barb only) -->
+  <path d="M 107 373 L 144 418 L 160 398 Z" fill="#F43F5E"/>
+  <circle cx="112" cy="378" r="7" fill="#F43F5E"/>
+
+  <!-- White Fedora (-6 deg) with Tighter, Tucked-Under Headphones -->
+  <g transform="translate(256, 248) scale(0.72) translate(-256, -258) rotate(-6 256 256)">
+    <!-- Tighter Headband Arch -->
+    <path d="M 134 264 C 134 102, 378 102, 378 264" fill="none" stroke="#00B4FF" stroke-width="22" stroke-linecap="round"/>
+    <!-- Ear-Cups tucked under the brim (where the ears are) -->
+    <rect x="116" y="324" width="54" height="84" rx="22" fill="#00B4FF"/>
+    <rect x="342" y="324" width="54" height="84" rx="22" fill="#F43F5E"/>
+    <!-- Thin stems connecting headband behind brim to ear-cups -->
+    <path d="M 136 264 L 142 332" stroke="#00B4FF" stroke-width="18" stroke-linecap="round"/>
+    <path d="M 376 264 L 370 332" stroke="#F43F5E" stroke-width="18" stroke-linecap="round"/>
+
+    <!-- White Fedora Crown -->
+    <path d="M 162 252 L 186 162 L 208 150 L 256 196 L 304 150 L 326 162 L 350 252 Q 256 264 162 252 Z" fill="#FFFFFF"/>
+    <path d="M 220 154 L 256 165 L 292 154 L 256 186 Z" fill="#FFFFFF"/>
+    <!-- Modular Two-Tone Hatband -->
+    <path d="M 159 264 Q 232 273 300 269 L 305 305 Q 234 310 151 300 Z" fill="#00B4FF"/>
+    <path d="M 315 268 Q 334 266 353 264 L 361 300 Q 342 303 320 305 Z" fill="#F43F5E"/>
+    <!-- Brim -->
+    <path d="M 86 312 L 150 312 Q 256 326 362 312 L 426 312 C 394 362, 330 384, 256 384 C 182 384, 118 362, 86 312 Z" fill="#FFFFFF"/>
+  </g>
+</svg>
