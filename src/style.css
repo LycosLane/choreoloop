@@ -788,6 +788,19 @@ button:disabled {
 .guide-block p {
   margin: 0;
   font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.guide-block p + p {
+  margin-top: 4px;
+}
+
+.guide-list {
+  margin: 2px 0 0;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.5;
   color: var(--text);
 }
 
