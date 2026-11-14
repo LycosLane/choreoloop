@@ -613,11 +613,30 @@ button:disabled {
 .btn-icon-text {
   min-width: 60px;
   height: 48px;
-  border-radius: var(--radius-md);
-  background: var(--card);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
   border: 1px solid var(--border);
   font-weight: 700;
   font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.btn-stepper {
+  height: 32px;
+  min-width: 34px;
+  padding: 0 9px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.btn-stepper:active {
+  transform: scale(0.96);
 }
 
 .btn-play {
@@ -669,14 +688,25 @@ button:disabled {
 .countin-section {
   display: flex;
   align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.countin-options {
+  display: flex;
+  align-items: center;
   gap: 6px;
   flex-wrap: wrap;
 }
 
-.countin-group {
+.segmented-group {
   display: flex;
   align-items: center;
-  gap: 5px;
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 2px;
+  gap: 2px;
   flex-wrap: wrap;
 }
 
@@ -747,11 +777,12 @@ button:disabled {
 }
 
 .btn-step {
-  height: 26px;
-  padding: 0 7px;
+  min-height: 28px;
+  padding: 0 8px;
   border-radius: 6px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   color: var(--text-muted);
 }
 
@@ -972,7 +1003,9 @@ button:disabled {
   background: var(--surface);
   border: 1px solid var(--border);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
 }
 
 /* Bookmarks */

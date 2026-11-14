@@ -2,7 +2,7 @@ export type MediaKind = 'audio' | 'video' | 'youtube';
 
 export type CountInMode = '3s' | '5s' | 'beats';
 
-export type BeatSubdivision = 1 | 2 | 4;
+export type BeatSubdivision = 2 | 3 | 4 | 6 | 8 | 16;
 
 export interface LoopBookmark {
   id: string;

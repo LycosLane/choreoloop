@@ -63,7 +63,7 @@ export class ChoreoPlayer {
   private repeatCountInOnLoop = true;
   private bpm = 120;
   private beatCount = 4;
-  private beatSubdivision: BeatSubdivision = 1;
+  private beatSubdivision: BeatSubdivision = 4;
   private countInRemaining: number | null = null;
   private pointA: number | null = null;
   private pointB: number | null = null;
@@ -231,7 +231,15 @@ export class ChoreoPlayer {
     this.repeatCountInOnLoop = settings.repeatCountInOnLoop ?? true;
     this.bpm = clamp(settings.bpm || 120, 40, 240);
     this.beatCount = clamp(Math.round(settings.beatCount || 4), 1, 16);
-    this.beatSubdivision = settings.beatSubdivision === 2 || settings.beatSubdivision === 4 ? settings.beatSubdivision : 1;
+    this.beatSubdivision =
+      settings.beatSubdivision === 2 ||
+      settings.beatSubdivision === 3 ||
+      settings.beatSubdivision === 4 ||
+      settings.beatSubdivision === 6 ||
+      settings.beatSubdivision === 8 ||
+      settings.beatSubdivision === 16
+        ? settings.beatSubdivision
+        : 4;
     this.pointA = settings.pointA;
     this.pointB = settings.pointB;
     this.loopEnabled = settings.loopEnabled;
@@ -380,7 +388,7 @@ export class ChoreoPlayer {
           ? 5
           : this.beatCount;
     const stepMs = isBeats
-      ? Math.max(80, Math.round(60000 / (this.bpm * this.speed * this.beatSubdivision)))
+      ? Math.max(60, Math.round((4 / this.beatSubdivision) * (60000 / (this.bpm * this.speed))))
       : 1000;
 
     let stepIndex = 1;

@@ -64,6 +64,7 @@ const btnFwd5 = $<HTMLButtonElement>('btn-fwd-5');
 
 const btnMirror = $<HTMLButtonElement>('btn-mirror');
 const btnCountInToggle = $<HTMLButtonElement>('btn-countin-toggle');
+const countInOptionsEl = $<HTMLDivElement>('countin-options');
 const countInButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-countin]'));
 const btnLoopCountIn = $<HTMLButtonElement>('btn-loop-countin');
 const bpmRowEl = $<HTMLDivElement>('bpm-row');
@@ -262,7 +263,7 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
   }
 
   // Count-In overlay (only over local stage; YouTube uses native player without overlays)
-  const gridLabel = snap.beatSubdivision === 4 ? '1/16' : snap.beatSubdivision === 2 ? '1/8' : '1/4';
+  const gridLabel = `1/${snap.beatSubdivision}`;
   if (snap.countInRemaining !== null) {
     countInOverlay.classList.remove('hidden');
     const isBeats = snap.countInMode === 'beats';
@@ -292,20 +293,20 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
   btnMirror.disabled = isYouTube;
   btnMirror.classList.toggle('is-active', snap.mirror && !isYouTube);
   btnMirror.setAttribute('aria-pressed', String(snap.mirror && !isYouTube));
-  btnMirror.textContent = isYouTube ? 'Mirror: Local Only' : snap.mirror ? 'Mirror: On' : 'Mirror: Off';
+  btnMirror.textContent = 'Mirror';
   mirrorBadgeEl.classList.toggle('hidden', !snap.mirror || !isLocalVideo);
   ytMirrorNoteEl.classList.toggle('hidden', !isYouTube);
   ytSpeedNoteEl.classList.toggle('hidden', !isYouTube);
 
-  // Count-in toggle, Once/Loop switch, mode chips & Beat Grid row
+  // Count-in toggle, Each Loop switch, mode chips & Beat Grid row
   btnCountInToggle.classList.toggle('is-active', snap.countInEnabled);
   btnCountInToggle.setAttribute('aria-pressed', String(snap.countInEnabled));
-  btnCountInToggle.textContent = snap.countInEnabled ? 'Count-In: On' : 'Count-In: Off';
+  btnCountInToggle.textContent = 'Count-In';
 
-  btnLoopCountIn.classList.toggle('hidden', !snap.countInEnabled);
+  countInOptionsEl.classList.toggle('hidden', !snap.countInEnabled);
   btnLoopCountIn.classList.toggle('is-active', snap.repeatCountInOnLoop);
   btnLoopCountIn.setAttribute('aria-pressed', String(snap.repeatCountInOnLoop));
-  btnLoopCountIn.textContent = snap.repeatCountInOnLoop ? 'Loop' : 'Once';
+  btnLoopCountIn.textContent = 'Each Loop';
 
   for (const btn of countInButtons) {
     btn.classList.toggle('is-active', btn.dataset.countin === snap.countInMode);
@@ -340,7 +341,7 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
   btnLoopToggle.disabled = !hasValidRange;
   btnLoopToggle.classList.toggle('is-active', snap.loopEnabled && hasValidRange);
   btnLoopToggle.setAttribute('aria-pressed', String(snap.loopEnabled && hasValidRange));
-  btnLoopToggle.textContent = snap.loopEnabled && hasValidRange ? 'Loop On' : 'Loop Off';
+  btnLoopToggle.textContent = 'Loop';
 
   btnClearAB.disabled = !hasA && !hasB;
 
@@ -462,7 +463,7 @@ function renderLibrary(): void {
   if (tracks.length === 0) {
     const empty = document.createElement('p');
     empty.className = 'empty-hint';
-    empty.textContent = 'No tracks yet. Tap "+ File" or "+ YT" to add audio, video, or YouTube.';
+    empty.textContent = 'No tracks yet. Tap "+ File" or "+ YouTube" to add audio, video, or YouTube.';
     libraryListEl.appendChild(empty);
     return;
   }
@@ -828,7 +829,7 @@ btnBeatCountPlus.addEventListener('click', () => player.setBeatCount(player.getS
 for (const btn of subdivisionButtons) {
   btn.addEventListener('click', () => {
     const sub = Number(btn.dataset.subdivision);
-    if (sub === 1 || sub === 2 || sub === 4) {
+    if (sub === 2 || sub === 3 || sub === 4 || sub === 6 || sub === 8 || sub === 16) {
       player.setBeatSubdivision(sub as BeatSubdivision);
     }
   });
