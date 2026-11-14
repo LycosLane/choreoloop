@@ -54,6 +54,8 @@ export class ChoreoPlayer {
 
   private rafId: number | null = null;
   private countInTimerId: number | null = null;
+  private unlockTimerId: number | null = null;
+  private ytLoadSeq = 0;
 
   private speed = 1.0;
   private mirror = false;
@@ -155,6 +157,7 @@ export class ChoreoPlayer {
   }
 
   public async loadYouTube(videoId: string, settings: TrackSettings): Promise<void> {
+    const seq = ++this.ytLoadSeq;
     this.cleanupActiveMedia();
     this.applyTrackSettings(settings);
     this.activeKind = 'youtube';
@@ -163,16 +166,18 @@ export class ChoreoPlayer {
 
     try {
       const YT = await loadYouTubeAPI();
-      if (this.activeKind !== 'youtube') return;
+      if (this.activeKind !== 'youtube' || seq !== this.ytLoadSeq) return;
 
       this.ytContainerEl.innerHTML = '<div id="yt-player-mount"></div>';
       this.ytPlayer = new YT.Player('yt-player-mount', {
+        host: 'https://www.youtube-nocookie.com',
         videoId,
         playerVars: {
           playsinline: 1,
           rel: 0,
           modestbranding: 1,
           enablejsapi: 1,
+          origin: window.location.origin,
         },
         events: {
           onReady: (e) => {
@@ -346,8 +351,9 @@ export class ChoreoPlayer {
       const wasMuted = this.ytPlayer.isMuted();
       this.ytPlayer.mute();
       this.ytPlayer.playVideo();
-      window.setTimeout(() => {
-        if (this.countInRemaining !== null && this.ytPlayer) {
+      this.unlockTimerId = window.setTimeout(() => {
+        this.unlockTimerId = null;
+        if (this.ytPlayer) {
           this.ytPlayer.pauseVideo();
           if (!wasMuted) this.ytPlayer.unMute();
         }
@@ -410,6 +416,14 @@ export class ChoreoPlayer {
     if (this.countInTimerId !== null) {
       window.clearInterval(this.countInTimerId);
       this.countInTimerId = null;
+    }
+    if (this.unlockTimerId !== null) {
+      window.clearTimeout(this.unlockTimerId);
+      this.unlockTimerId = null;
+      if (this.activeKind === 'youtube' && this.ytPlayer) {
+        this.ytPlayer.pauseVideo();
+        this.ytPlayer.unMute();
+      }
     }
   }
 

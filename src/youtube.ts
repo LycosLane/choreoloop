@@ -16,6 +16,7 @@ export interface YTGlobal {
   Player: new (
     elementId: string | HTMLElement,
     options: {
+      host?: string;
       videoId: string;
       playerVars?: Record<string, string | number>;
       events?: {
@@ -51,8 +52,11 @@ export function extractYouTubeId(input: string): string | null {
     return trimmed;
   }
 
+  const urlMatch = trimmed.match(/https?:\/\/[^\s]+/i);
+  const candidate = urlMatch ? urlMatch[0] : trimmed;
+
   try {
-    const url = new URL(trimmed.startsWith('http') ? trimmed : `https://${trimmed}`);
+    const url = new URL(candidate.startsWith('http') ? candidate : `https://${candidate}`);
     const host = url.hostname.replace(/^www\./, '');
     if (host === 'youtu.be') {
       const id = url.pathname.split('/').filter(Boolean)[0];

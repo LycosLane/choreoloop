@@ -211,7 +211,9 @@ function initTheme(): void {
 function setNudgeStep(step: number): void {
   nudgeStep = step;
   for (const btn of stepButtons) {
-    btn.classList.toggle('is-active', Number(btn.dataset.step) === step);
+    const isActive = Number(btn.dataset.step) === step;
+    btn.classList.toggle('is-active', isActive);
+    btn.setAttribute('aria-pressed', String(isActive));
   }
   const label = `${step}s`;
   btnAMinus.textContent = `-${label}`;
@@ -294,7 +296,7 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
   }
 
   // Count-In overlay (only over local stage; YouTube uses native player without overlays)
-  if (snap.countInRemaining !== null) {
+  if (snap.countInRemaining !== null && !isYouTube) {
     countInOverlay.classList.remove('hidden');
     const isBeats = snap.countInMode === 'beats';
     countInLabelEl.textContent = isBeats
@@ -307,6 +309,7 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
 
   // Play/Pause button
   playIconEl.innerHTML = snap.isPlaying ? '&#10074;&#10074;' : '&#9654;';
+  btnPlay.setAttribute('aria-label', snap.isPlaying ? 'Pause' : 'Play');
   btnPlay.disabled = !hasMedia;
   btnBack5.disabled = !hasMedia;
   btnFwd5.disabled = !hasMedia;
@@ -339,7 +342,9 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
   btnLoopCountIn.textContent = 'Each Loop';
 
   for (const btn of countInButtons) {
-    btn.classList.toggle('is-active', btn.dataset.countin === snap.countInMode);
+    const isActive = btn.dataset.countin === snap.countInMode;
+    btn.classList.toggle('is-active', isActive);
+    btn.setAttribute('aria-pressed', String(isActive));
   }
 
   const showBpm = snap.countInEnabled && snap.countInMode === 'beats';
@@ -364,6 +369,8 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
   btnSetB.disabled = !hasMedia;
   btnSetA.classList.toggle('is-set', hasA);
   btnSetB.classList.toggle('is-set', hasB);
+  btnSetA.setAttribute('aria-pressed', String(hasA));
+  btnSetB.setAttribute('aria-pressed', String(hasB));
 
   btnLoopToggle.disabled = !hasValidRange;
   btnLoopToggle.classList.toggle('is-active', snap.loopEnabled && hasValidRange);
@@ -393,7 +400,9 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
   speedSlider.value = String(snap.speed);
   for (const btn of speedButtons) {
     const preset = Number(btn.dataset.speed);
-    btn.classList.toggle('is-active', Math.abs(preset - snap.speed) < 0.01);
+    const isActive = Math.abs(preset - snap.speed) < 0.01;
+    btn.classList.toggle('is-active', isActive);
+    btn.setAttribute('aria-pressed', String(isActive));
   }
 
   renderTimeline(snap.currentTime, snap.duration);
@@ -458,7 +467,12 @@ function renderBookmarks(): void {
     const selectBtn = document.createElement('button');
     selectBtn.type = 'button';
     selectBtn.className = 'bookmark-select';
-    selectBtn.innerHTML = `<span>${escapeHtml(bm.name)}</span><span class="bookmark-range">${formatTime(bm.start, false)}-${formatTime(bm.end, false)}</span>`;
+    const nameSpan = document.createElement('span');
+    nameSpan.textContent = bm.name;
+    const rangeSpan = document.createElement('span');
+    rangeSpan.className = 'bookmark-range';
+    rangeSpan.textContent = `${formatTime(bm.start, false)}-${formatTime(bm.end, false)}`;
+    selectBtn.append(nameSpan, rangeSpan);
     selectBtn.addEventListener('click', () => {
       player.applyBookmark(bm.start, bm.end);
       showToast(`Loaded "${bm.name}"`);
@@ -468,7 +482,7 @@ function renderBookmarks(): void {
     delBtn.type = 'button';
     delBtn.className = 'bookmark-delete';
     delBtn.setAttribute('aria-label', `Delete ${bm.name}`);
-    delBtn.innerHTML = '&times;';
+    delBtn.textContent = '\u00d7';
     delBtn.addEventListener('click', () => {
       void removeBookmark(bm.id);
     });
@@ -538,10 +552,13 @@ function renderLibrary(): void {
       }
     }
     const bmCount = track.bookmarks.length;
-    mainBtn.innerHTML = `
-      <span class="library-item-title">${escapeHtml(track.name)}</span>
-      <span class="library-item-meta">${kindLabel} · ${durLabel} · ${sizeOrNet} · ${bmCount} loop${bmCount === 1 ? '' : 's'}</span>
-    `;
+    const titleSpan = document.createElement('span');
+    titleSpan.className = 'library-item-title';
+    titleSpan.textContent = track.name;
+    const metaSpan = document.createElement('span');
+    metaSpan.className = 'library-item-meta';
+    metaSpan.textContent = `${kindLabel} · ${durLabel} · ${sizeOrNet} · ${bmCount} loop${bmCount === 1 ? '' : 's'}`;
+    mainBtn.append(titleSpan, metaSpan);
     mainBtn.addEventListener('click', () => {
       void selectTrack(track.id);
       closeLibraryModal();
@@ -719,13 +736,23 @@ function setStageFullscreen(active: boolean): void {
   btnFullscreen.textContent = active ? 'Exit' : 'Fullscreen';
 }
 
+function syncModalScrollLock(): void {
+  const anyOpen =
+    !ytModal.classList.contains('hidden') ||
+    !libraryModal.classList.contains('hidden') ||
+    !guideModal.classList.contains('hidden');
+  document.body.style.overflow = anyOpen ? 'hidden' : '';
+}
+
 function openYtModal(): void {
   ytModal.classList.remove('hidden');
+  syncModalScrollLock();
   ytUrlInput.focus();
 }
 
 function closeYtModal(): void {
   ytModal.classList.add('hidden');
+  syncModalScrollLock();
   ytUrlInput.value = '';
   ytTitleInput.value = '';
 }
@@ -734,29 +761,36 @@ function openLibraryModal(): void {
   libraryConfirmEl.classList.add('hidden');
   renderLibrary();
   libraryModal.classList.remove('hidden');
+  syncModalScrollLock();
 }
 
 function closeLibraryModal(): void {
   libraryConfirmEl.classList.add('hidden');
   libraryModal.classList.add('hidden');
+  syncModalScrollLock();
 }
 
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+function openGuideModal(): void {
+  guideModal.classList.remove('hidden');
+  syncModalScrollLock();
 }
 
-// Scrubber Pointer Interaction
+function closeGuideModal(): void {
+  guideModal.classList.add('hidden');
+  syncModalScrollLock();
+}
+
+// Scrubber Pointer & Keyboard Interaction
 let isScrubbing = false;
+let scrubRafId: number | null = null;
+let pendingScrubX: number | null = null;
 
 function seekFromClientX(clientX: number): void {
   const snap = player.getSnapshot();
   const dur = snap.duration > 0 ? snap.duration : activeTrack?.duration ?? 0;
   if (dur <= 0) return;
   const rect = scrubberEl.getBoundingClientRect();
+  if (rect.width <= 0) return;
   const ratio = clamp((clientX - rect.left) / rect.width, 0, 1);
   player.seekTo(ratio * dur);
 }
@@ -769,17 +803,55 @@ scrubberEl.addEventListener('pointerdown', (e) => {
 
 scrubberEl.addEventListener('pointermove', (e) => {
   if (!isScrubbing) return;
-  seekFromClientX(e.clientX);
+  pendingScrubX = e.clientX;
+  if (scrubRafId === null) {
+    scrubRafId = window.requestAnimationFrame(() => {
+      scrubRafId = null;
+      if (pendingScrubX !== null && isScrubbing) {
+        seekFromClientX(pendingScrubX);
+      }
+    });
+  }
 });
 
 scrubberEl.addEventListener('pointerup', (e) => {
   if (!isScrubbing) return;
   isScrubbing = false;
+  if (scrubRafId !== null) {
+    window.cancelAnimationFrame(scrubRafId);
+    scrubRafId = null;
+  }
+  seekFromClientX(e.clientX);
+  pendingScrubX = null;
   scrubberEl.releasePointerCapture(e.pointerId);
 });
 
 scrubberEl.addEventListener('pointercancel', () => {
   isScrubbing = false;
+  if (scrubRafId !== null) {
+    window.cancelAnimationFrame(scrubRafId);
+    scrubRafId = null;
+  }
+  pendingScrubX = null;
+});
+
+scrubberEl.addEventListener('keydown', (e) => {
+  const snap = player.getSnapshot();
+  const dur = snap.duration > 0 ? snap.duration : activeTrack?.duration ?? 0;
+  if (dur <= 0) return;
+  if (e.key === 'ArrowLeft') {
+    e.preventDefault();
+    player.seekBy(e.shiftKey ? -5 : -1);
+  } else if (e.key === 'ArrowRight') {
+    e.preventDefault();
+    player.seekBy(e.shiftKey ? 5 : 1);
+  } else if (e.key === 'Home') {
+    e.preventDefault();
+    player.seekTo(0);
+  } else if (e.key === 'End') {
+    e.preventDefault();
+    player.seekTo(dur);
+  }
 });
 
 function closeHeaderMenu(): void {
@@ -835,6 +907,9 @@ $('btn-import-empty').addEventListener('click', triggerImport);
 $('btn-import-modal').addEventListener('click', triggerImport);
 fileInput.addEventListener('change', () => {
   void handleFilesImported(fileInput.files);
+});
+fileInput.addEventListener('cancel', () => {
+  pendingRelinkTrackId = null;
 });
 
 $('btn-yt-top').addEventListener('click', () => {
@@ -902,11 +977,11 @@ $('btn-confirm-clear-yes').addEventListener('click', () => {
 
 $('btn-guide').addEventListener('click', () => {
   closeHeaderMenu();
-  guideModal.classList.remove('hidden');
+  openGuideModal();
 });
-$('btn-close-guide').addEventListener('click', () => guideModal.classList.add('hidden'));
+$('btn-close-guide').addEventListener('click', closeGuideModal);
 guideModal.addEventListener('click', (e) => {
-  if (e.target === guideModal) guideModal.classList.add('hidden');
+  if (e.target === guideModal) closeGuideModal();
 });
 
 btnPlay.addEventListener('click', () => player.togglePlay());
@@ -1000,10 +1075,30 @@ speedSlider.addEventListener('input', () => {
 
 // Keyboard shortcuts for desktop testing
 window.addEventListener('keydown', (e) => {
+  if (e.code === 'Escape') {
+    if (!headerMenuEl.classList.contains('hidden')) {
+      closeHeaderMenu();
+      return;
+    }
+    if (!ytModal.classList.contains('hidden')) {
+      closeYtModal();
+      return;
+    }
+    if (!libraryModal.classList.contains('hidden')) {
+      closeLibraryModal();
+      return;
+    }
+    if (!guideModal.classList.contains('hidden')) {
+      closeGuideModal();
+      return;
+    }
+    if (isStageFullscreen) {
+      setStageFullscreen(false);
+      return;
+    }
+  }
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-  if (e.code === 'Escape' && isStageFullscreen) {
-    setStageFullscreen(false);
-  } else if (e.code === 'Space') {
+  if (e.code === 'Space') {
     e.preventDefault();
     player.togglePlay();
   } else if (e.key === 'a' || e.key === 'A') {

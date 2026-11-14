@@ -31,8 +31,21 @@ function openDB(): Promise<IDBDatabase> {
       }
     };
 
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error('Failed to open IndexedDB'));
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onclose = () => {
+        dbPromise = null;
+      };
+      db.onversionchange = () => {
+        db.close();
+        dbPromise = null;
+      };
+      resolve(db);
+    };
+    request.onerror = () => {
+      dbPromise = null;
+      reject(request.error ?? new Error('Failed to open IndexedDB'));
+    };
   });
 
   return dbPromise;
@@ -66,16 +79,21 @@ function normalizeTrackSettings(raw: Partial<TrackMetadata['settings']> | undefi
     countInMode = legacySec === 5 ? '5s' : '3s';
   }
 
+  const rawSpeed = Number(raw?.speed);
+  const speed = Number.isFinite(rawSpeed) ? Math.min(1.25, Math.max(0.25, rawSpeed)) : 1.0;
+  const pointA = typeof raw?.pointA === 'number' && Number.isFinite(raw.pointA) && raw.pointA >= 0 ? raw.pointA : null;
+  const pointB = typeof raw?.pointB === 'number' && Number.isFinite(raw.pointB) && raw.pointB >= 0 ? raw.pointB : null;
+
   return {
-    speed: raw?.speed ?? 1.0,
-    mirror: raw?.mirror ?? false,
+    speed,
+    mirror: Boolean(raw?.mirror),
     countInEnabled,
     countInMode,
     repeatCountInOnLoop: raw?.repeatCountInOnLoop ?? true,
-    bpm: raw?.bpm ?? 120,
+    bpm: Math.min(240, Math.max(40, Math.round(raw?.bpm ?? 120))),
     beatCount: Math.max(1, Math.min(16, Math.round(beatCount))),
-    pointA: raw?.pointA ?? null,
-    pointB: raw?.pointB ?? null,
+    pointA,
+    pointB,
     loopEnabled: raw?.loopEnabled ?? false,
   };
 }
@@ -205,17 +223,26 @@ export async function saveImportedFile(
     };
     try {
       meta.hasOfflineCopy = true;
+      let txError: DOMException | Error | null = null;
       await new Promise<void>((resolve, reject) => {
         const tx = db.transaction([META_STORE, MEDIA_STORE], 'readwrite');
         tx.objectStore(META_STORE).put(meta);
         tx.objectStore(MEDIA_STORE).put(mediaRecord);
         tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error ?? new Error('IndexedDB write failed'));
-        tx.onabort = () => reject(tx.error ?? new Error('IndexedDB transaction aborted'));
+        tx.onerror = () => {
+          txError = tx.error;
+          reject(tx.error ?? new Error('IndexedDB write failed'));
+        };
+        tx.onabort = () => {
+          reject(txError ?? tx.error ?? new Error('IndexedDB transaction aborted'));
+        };
       });
     } catch (err) {
       const errName = err instanceof DOMException ? err.name : '';
-      if (errName === 'QuotaExceededError') {
+      const isQuota =
+        errName === 'QuotaExceededError' ||
+        (err instanceof Error && /quota/i.test(err.message));
+      if (isQuota) {
         meta.hasOfflineCopy = false;
         quotaFallback = true;
         await updateTrackMeta(meta);
@@ -242,9 +269,10 @@ export async function saveImportedFile(
 
 export async function saveYouTubeTrack(youtubeId: string, title?: string): Promise<TrackMetadata> {
   const now = Date.now();
+  const cleanTitle = title?.trim().slice(0, 80);
   const meta: TrackMetadata = {
     id: generateId(),
-    name: title?.trim() || `YouTube (${youtubeId})`,
+    name: cleanTitle || `YouTube (${youtubeId})`,
     mimeType: 'video/youtube',
     mediaKind: 'youtube',
     youtubeId,
