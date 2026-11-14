@@ -21,7 +21,7 @@
     <link id="apple-touch-icon" rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
 
     <link id="favicon-link" rel="icon" type="image/svg+xml" href="./icons/choreoloop.svg" />
-    <link rel="manifest" href="./manifest.json" />
+    <link id="manifest-link" rel="manifest" href="./manifest.json" />
   </head>
   <body>
     <div id="app" class="app-shell">
@@ -58,6 +58,9 @@
               </button>
               <button id="btn-theme" class="menu-item" type="button" role="menuitem">
                 Switch to Light Mode
+              </button>
+              <button id="btn-guide" class="menu-item" type="button" role="menuitem">
+                How-To &amp; Privacy
               </button>
             </div>
           </div>
@@ -215,6 +218,10 @@
             </div>
             <span id="bpm-effective" class="bpm-effective">120 BPM</span>
           </div>
+
+          <p id="yt-mirror-note" class="restriction-note hidden">
+            Mirror Mode &amp; custom Fullscreen are disabled for YouTube videos (restricted by YouTube / Google Player Branding Terms).
+          </p>
         </section>
 
         <!-- A-B Loop Controls -->
@@ -312,6 +319,10 @@
             />
             <span class="slider-bound">1.25x</span>
           </div>
+
+          <p id="yt-speed-note" class="restriction-note hidden">
+            YouTube playback speed is restricted by the Google/YouTube API to fixed steps (0.25x, 0.5x, 0.75x, 1.0x, 1.25x).
+          </p>
         </section>
       </main>
 
@@ -351,6 +362,74 @@
         </div>
       </div>
 
+      <!-- How-To & Privacy Guide Modal -->
+      <div id="guide-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="How-To and Privacy Guide">
+        <div class="modal-sheet guide-sheet">
+          <div class="modal-header">
+            <h2 class="modal-title">How-To &amp; Privacy</h2>
+            <button id="btn-close-guide" class="btn-pill btn-surface" type="button">Close</button>
+          </div>
+          <div class="guide-body">
+            <div class="guide-block">
+              <h3>100% Private, Free &amp; Offline</h3>
+              <p>
+                No account, no login, no ads, and zero tracking. Everything runs in your browser.
+                When you tap <strong>+ Import File</strong>, ChoreoLoop saves a <strong>local copy</strong> inside your browser's private IndexedDB storage on this device. Nothing is ever uploaded to a server, and your original file on your phone or SD card is never changed or deleted.
+              </p>
+              <p>
+                Supported formats: <strong>Audio</strong> (MP3, M4A, WAV, AAC, OGG) and <strong>Video</strong> (MP4, MOV, WebM).
+              </p>
+            </div>
+
+            <div class="guide-block">
+              <h3>Local Files vs. YouTube Links</h3>
+              <table class="guide-table">
+                <thead>
+                  <tr>
+                    <th>Feature</th>
+                    <th>Local File</th>
+                    <th>YouTube Link</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Works Offline</td>
+                    <td>Yes (saved locally)</td>
+                    <td>No (streams online)</td>
+                  </tr>
+                  <tr>
+                    <td>Mirror Mode &amp; Fullscreen</td>
+                    <td>Yes</td>
+                    <td>No (YouTube API Terms)</td>
+                  </tr>
+                  <tr>
+                    <td>Slow-Motion Speed</td>
+                    <td>Smooth 0.25x - 1.25x</td>
+                    <td>Fixed API steps (0.25, 0.5, 0.75, 1.0, 1.25)</td>
+                  </tr>
+                  <tr>
+                    <td>A-B Loop &amp; Bookmarks</td>
+                    <td>Yes (frame-accurate)</td>
+                    <td>Yes (online buffering)</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+
+            <div class="guide-block">
+              <h3>Save as an App (Works Offline)</h3>
+              <p>
+                <strong>iPhone / iPad (Safari):</strong> Tap <strong>Share</strong> &rarr; <strong>Add to Home Screen</strong>.
+                <br />
+                <strong>Android (Chrome / Brave):</strong> Tap browser <strong>Menu (&#8942;)</strong> &rarr; <strong>Install app</strong> / <strong>Add to Home screen</strong>.
+                <br />
+                <em>Tip:</em> Pick Dark Mode (White Hat) or Light Mode (Black Hat) before saving to use that icon on your Home Screen. Once saved and opened online once, the app launches offline in any dance studio.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Library Drawer Modal -->
       <div id="library-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="Track Library">
         <div class="modal-sheet">
@@ -361,7 +440,9 @@
               <button id="btn-close-library" class="btn-pill btn-surface" type="button">Close</button>
             </div>
           </div>
-          <p class="modal-note">Audio &amp; video files are stored locally in IndexedDB for 100% offline use.</p>
+          <p class="modal-note">
+            Files imported via + File are copied into your browser's private offline storage (IndexedDB). Removing a track here only deletes ChoreoLoop's copy - your original file on your phone is never touched. YouTube items only store the link and bookmarks.
+          </p>
           <div id="library-list" class="library-list"></div>
         </div>
       </div>

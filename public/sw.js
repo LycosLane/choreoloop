@@ -1,14 +1,18 @@
-const CACHE_NAME = 'choreoloop-v3';
+const CACHE_NAME = 'choreoloop-v4';
 
 const PRECACHE_URLS = [
   './',
   './index.html',
   './manifest.json',
+  './manifest-light.json',
   './icons/choreoloop.svg',
   './icons/choreoloop-light.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
   './icons/icon-maskable-512.png',
+  './icons/icon-light-192.png',
+  './icons/icon-light-512.png',
+  './icons/icon-maskable-light-512.png',
   './icons/apple-touch-icon.png',
   './icons/apple-touch-icon-light.png',
   /* __VITE_ASSETS__ */

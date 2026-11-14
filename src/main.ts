@@ -100,6 +100,11 @@ const ytUrlInput = $<HTMLInputElement>('yt-url-input');
 const ytTitleInput = $<HTMLInputElement>('yt-title-input');
 const btnYtPaste = $<HTMLButtonElement>('btn-yt-paste');
 
+const ytMirrorNoteEl = $<HTMLParagraphElement>('yt-mirror-note');
+const ytSpeedNoteEl = $<HTMLParagraphElement>('yt-speed-note');
+
+const guideModal = $<HTMLDivElement>('guide-modal');
+
 const libraryModal = $<HTMLDivElement>('library-modal');
 const libraryListEl = $<HTMLDivElement>('library-list');
 const toastEl = $<HTMLDivElement>('toast');
@@ -108,6 +113,7 @@ const btnTheme = $<HTMLButtonElement>('btn-theme');
 const btnMenu = $<HTMLButtonElement>('btn-menu');
 const headerMenuEl = $<HTMLDivElement>('header-menu');
 const faviconLinkEl = document.getElementById('favicon-link') as HTMLLinkElement | null;
+const manifestLinkEl = document.getElementById('manifest-link') as HTMLLinkElement | null;
 const appleTouchIconEl = document.getElementById('apple-touch-icon') as HTMLLinkElement | null;
 const themeColorMetaEl = document.getElementById('theme-color-meta') as HTMLMetaElement | null;
 
@@ -130,6 +136,7 @@ function applyTheme(theme: AppTheme): void {
   const appleIcon = isLight ? './icons/apple-touch-icon-light.png' : './icons/apple-touch-icon.png';
 
   if (faviconLinkEl) faviconLinkEl.href = svgIcon;
+  if (manifestLinkEl) manifestLinkEl.href = isLight ? './manifest-light.json' : './manifest.json';
   if (appleTouchIconEl) appleTouchIconEl.href = appleIcon;
   if (themeColorMetaEl) themeColorMetaEl.content = isLight ? '#F8FAFC' : '#101216';
 
@@ -270,6 +277,8 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
   btnMirror.setAttribute('aria-pressed', String(snap.mirror && !isYouTube));
   btnMirror.textContent = isYouTube ? 'Mirror: Local Only' : snap.mirror ? 'Mirror: On' : 'Mirror: Off';
   mirrorBadgeEl.classList.toggle('hidden', !snap.mirror || !isLocalVideo);
+  ytMirrorNoteEl.classList.toggle('hidden', !isYouTube);
+  ytSpeedNoteEl.classList.toggle('hidden', !isYouTube);
 
   // Count-in chips & BPM row
   for (const btn of countInButtons) {
@@ -444,7 +453,8 @@ function renderLibrary(): void {
     const delBtn = document.createElement('button');
     delBtn.type = 'button';
     delBtn.className = 'library-item-delete';
-    delBtn.textContent = 'Delete';
+    delBtn.setAttribute('aria-label', `Remove ${track.name} from ChoreoLoop library`);
+    delBtn.textContent = 'Remove';
     delBtn.addEventListener('click', () => {
       void handleDeleteTrack(track.id);
     });
@@ -703,6 +713,15 @@ $('btn-library').addEventListener('click', openLibraryModal);
 $('btn-close-library').addEventListener('click', closeLibraryModal);
 libraryModal.addEventListener('click', (e) => {
   if (e.target === libraryModal) closeLibraryModal();
+});
+
+$('btn-guide').addEventListener('click', () => {
+  closeHeaderMenu();
+  guideModal.classList.remove('hidden');
+});
+$('btn-close-guide').addEventListener('click', () => guideModal.classList.add('hidden'));
+guideModal.addEventListener('click', (e) => {
+  if (e.target === guideModal) guideModal.classList.add('hidden');
 });
 
 btnPlay.addEventListener('click', () => player.togglePlay());

@@ -750,6 +750,65 @@ button:disabled {
   align-items: center;
 }
 
+.restriction-note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--card);
+  border-left: 3px solid var(--rose);
+  padding: 6px 10px;
+  border-radius: 6px;
+}
+
+.guide-body {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-right: 4px;
+}
+
+.guide-block {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.guide-block h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--cyan);
+}
+
+.guide-block p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.guide-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.guide-table th,
+.guide-table td {
+  text-align: left;
+  padding: 6px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.guide-table th {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+
 .group-label {
   font-size: 12px;
   color: var(--text-muted);
