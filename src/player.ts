@@ -1,4 +1,4 @@
-import type { BeatSubdivision, CountInMode, MediaKind, TrackSettings } from './types';
+import type { CountInMode, MediaKind, TrackSettings } from './types';
 import { clamp, playCountInTone } from './utils';
 import { loadYouTubeAPI, type YTPlayerInstance } from './youtube';
 
@@ -13,7 +13,6 @@ export interface PlayerStateSnapshot {
   repeatCountInOnLoop: boolean;
   bpm: number;
   beatCount: number;
-  beatSubdivision: BeatSubdivision;
   countInRemaining: number | null;
   pointA: number | null;
   pointB: number | null;
@@ -63,7 +62,6 @@ export class ChoreoPlayer {
   private repeatCountInOnLoop = true;
   private bpm = 120;
   private beatCount = 4;
-  private beatSubdivision: BeatSubdivision = 4;
   private countInRemaining: number | null = null;
   private pointA: number | null = null;
   private pointB: number | null = null;
@@ -231,15 +229,6 @@ export class ChoreoPlayer {
     this.repeatCountInOnLoop = settings.repeatCountInOnLoop ?? true;
     this.bpm = clamp(settings.bpm || 120, 40, 240);
     this.beatCount = clamp(Math.round(settings.beatCount || 4), 1, 16);
-    this.beatSubdivision =
-      settings.beatSubdivision === 2 ||
-      settings.beatSubdivision === 3 ||
-      settings.beatSubdivision === 4 ||
-      settings.beatSubdivision === 6 ||
-      settings.beatSubdivision === 8 ||
-      settings.beatSubdivision === 16
-        ? settings.beatSubdivision
-        : 4;
     this.pointA = settings.pointA;
     this.pointB = settings.pointB;
     this.loopEnabled = settings.loopEnabled;
@@ -387,9 +376,7 @@ export class ChoreoPlayer {
         : this.countInMode === '5s'
           ? 5
           : this.beatCount;
-    const stepMs = isBeats
-      ? Math.max(60, Math.round((4 / this.beatSubdivision) * (60000 / (this.bpm * this.speed))))
-      : 1000;
+    const stepMs = isBeats ? Math.round(60000 / (this.bpm * this.speed)) : 1000;
 
     let stepIndex = 1;
     this.countInRemaining = isBeats ? 1 : totalSteps;
@@ -525,12 +512,6 @@ export class ChoreoPlayer {
 
   public setBeatCount(count: number): void {
     this.beatCount = clamp(Math.round(count), 1, 16);
-    this.emitState();
-    this.callbacks.onSettingsChanged();
-  }
-
-  public setBeatSubdivision(subdivision: BeatSubdivision): void {
-    this.beatSubdivision = subdivision;
     this.emitState();
     this.callbacks.onSettingsChanged();
   }
@@ -672,7 +653,6 @@ export class ChoreoPlayer {
       repeatCountInOnLoop: this.repeatCountInOnLoop,
       bpm: this.bpm,
       beatCount: this.beatCount,
-      beatSubdivision: this.beatSubdivision,
       countInRemaining: this.countInRemaining,
       pointA: this.pointA,
       pointB: this.pointB,

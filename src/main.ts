@@ -12,7 +12,7 @@ import {
   updateTrackMeta,
 } from './db';
 import { ChoreoPlayer, type PlayerStateSnapshot } from './player';
-import type { BeatSubdivision, CountInMode, LoopBookmark, TrackMetadata } from './types';
+import type { CountInMode, LoopBookmark, TrackMetadata } from './types';
 import { clamp, formatBytes, formatTime, generateId } from './utils';
 import { extractYouTubeId } from './youtube';
 
@@ -74,7 +74,6 @@ const btnBpmPlus = $<HTMLButtonElement>('btn-bpm-plus');
 const beatCountInput = $<HTMLInputElement>('beat-count-input');
 const btnBeatCountMinus = $<HTMLButtonElement>('btn-beat-count-minus');
 const btnBeatCountPlus = $<HTMLButtonElement>('btn-beat-count-plus');
-const subdivisionButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-subdivision]'));
 const bpmEffectiveEl = $<HTMLSpanElement>('bpm-effective');
 
 const btnSetA = $<HTMLButtonElement>('btn-set-a');
@@ -233,7 +232,6 @@ function scheduleSaveTrackSettings(): void {
     repeatCountInOnLoop: snap.repeatCountInOnLoop,
     bpm: snap.bpm,
     beatCount: snap.beatCount,
-    beatSubdivision: snap.beatSubdivision,
     pointA: snap.pointA,
     pointB: snap.pointB,
     loopEnabled: snap.loopEnabled,
@@ -263,12 +261,11 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
   }
 
   // Count-In overlay (only over local stage; YouTube uses native player without overlays)
-  const gridLabel = `1/${snap.beatSubdivision}`;
   if (snap.countInRemaining !== null) {
     countInOverlay.classList.remove('hidden');
     const isBeats = snap.countInMode === 'beats';
     countInLabelEl.textContent = isBeats
-      ? `BEAT COUNT (${snap.beatCount} x ${gridLabel} @ ${Math.round(snap.bpm * snap.speed)} BPM)`
+      ? `BEAT COUNT (${snap.beatCount} Beats @ ${Math.round(snap.bpm * snap.speed)} BPM)`
       : 'GET READY';
     countInNumberEl.textContent = String(snap.countInRemaining);
   } else {
@@ -320,13 +317,10 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
   if (document.activeElement !== beatCountInput) {
     beatCountInput.value = String(snap.beatCount);
   }
-  for (const btn of subdivisionButtons) {
-    btn.classList.toggle('is-active', Number(btn.dataset.subdivision) === snap.beatSubdivision);
-  }
   const effectiveBpm = Math.round(snap.bpm * snap.speed);
   const bpmSuffix =
     Math.abs(snap.speed - 1.0) < 0.01 ? `${snap.bpm} BPM` : `${effectiveBpm} eff. BPM`;
-  bpmEffectiveEl.textContent = `${snap.beatCount} x ${gridLabel} @ ${bpmSuffix}`;
+  bpmEffectiveEl.textContent = `${snap.beatCount} Beats @ ${bpmSuffix}`;
 
   // A-B Loop buttons
   const hasA = snap.pointA !== null;
@@ -825,15 +819,6 @@ beatCountInput.addEventListener('change', () => {
 });
 btnBeatCountMinus.addEventListener('click', () => player.setBeatCount(player.getSnapshot().beatCount - 1));
 btnBeatCountPlus.addEventListener('click', () => player.setBeatCount(player.getSnapshot().beatCount + 1));
-
-for (const btn of subdivisionButtons) {
-  btn.addEventListener('click', () => {
-    const sub = Number(btn.dataset.subdivision);
-    if (sub === 2 || sub === 3 || sub === 4 || sub === 6 || sub === 8 || sub === 16) {
-      player.setBeatSubdivision(sub as BeatSubdivision);
-    }
-  });
-}
 
 for (const btn of stepButtons) {
   btn.addEventListener('click', () => {

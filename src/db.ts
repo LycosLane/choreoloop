@@ -45,15 +45,6 @@ function normalizeTrackSettings(raw: Partial<TrackMetadata['settings']> | undefi
   let countInEnabled = raw?.countInEnabled ?? false;
   let countInMode: TrackMetadata['settings']['countInMode'] = '3s';
   let beatCount = raw?.beatCount ?? 4;
-  const beatSubdivision: TrackMetadata['settings']['beatSubdivision'] =
-    raw?.beatSubdivision === 2 ||
-    raw?.beatSubdivision === 3 ||
-    raw?.beatSubdivision === 4 ||
-    raw?.beatSubdivision === 6 ||
-    raw?.beatSubdivision === 8 ||
-    raw?.beatSubdivision === 16
-      ? raw.beatSubdivision
-      : 4;
 
   if (legacyMode === '3s' || legacyMode === '5s' || legacyMode === 'beats') {
     countInMode = legacyMode;
@@ -83,7 +74,6 @@ function normalizeTrackSettings(raw: Partial<TrackMetadata['settings']> | undefi
     repeatCountInOnLoop: raw?.repeatCountInOnLoop ?? true,
     bpm: raw?.bpm ?? 120,
     beatCount: Math.max(1, Math.min(16, Math.round(beatCount))),
-    beatSubdivision,
     pointA: raw?.pointA ?? null,
     pointB: raw?.pointB ?? null,
     loopEnabled: raw?.loopEnabled ?? false,

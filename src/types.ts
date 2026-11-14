@@ -2,8 +2,6 @@ export type MediaKind = 'audio' | 'video' | 'youtube';
 
 export type CountInMode = '3s' | '5s' | 'beats';
 
-export type BeatSubdivision = 2 | 3 | 4 | 6 | 8 | 16;
-
 export interface LoopBookmark {
   id: string;
   name: string;
@@ -20,7 +18,6 @@ export interface TrackSettings {
   repeatCountInOnLoop: boolean;
   bpm: number;
   beatCount: number;
-  beatSubdivision: BeatSubdivision;
   pointA: number | null;
   pointB: number | null;
   loopEnabled: boolean;
