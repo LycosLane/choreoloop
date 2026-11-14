@@ -26,10 +26,13 @@ export interface TrackSettings {
 export interface TrackMetadata {
   id: string;
   name: string;
+  fileName?: string;
   mimeType: string;
   mediaKind: MediaKind;
   youtubeId?: string;
   size: number;
+  lastModified?: number;
+  hasOfflineCopy?: boolean;
   duration: number;
   createdAt: number;
   updatedAt: number;

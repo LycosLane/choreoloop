@@ -59,6 +59,9 @@
               <button id="btn-theme" class="menu-item" type="button" role="menuitem">
                 Switch to Light Mode
               </button>
+              <button id="btn-keep-copy-menu" class="menu-item" type="button" role="menuitem">
+                Keep Local Copy: On
+              </button>
               <button id="btn-guide" class="menu-item" type="button" role="menuitem">
                 How-To &amp; Privacy
               </button>
@@ -406,11 +409,11 @@
                 Everything runs locally in your browser.
               </p>
               <p>
-                When you tap <strong>+ File</strong>, ChoreoLoop saves a <strong>local copy</strong> inside your browser's private IndexedDB storage on this device.
+                When you tap <strong>+ File</strong>, ChoreoLoop can either save a <strong>local copy</strong> in IndexedDB (instant offline switch) or <strong>stream directly</strong> without copying (0 MB storage, ideal for 1h videos).
                 <br />
-                Nothing is ever uploaded to a server.
+                Your loops, BPM, and bookmarks are always saved per file.
                 <br />
-                Your original file on your phone or SD card is never changed or deleted.
+                Nothing is ever uploaded to a server, and your original file is never changed or deleted.
               </p>
               <p><strong>Supported Formats:</strong></p>
               <ul class="guide-list">
@@ -497,8 +500,14 @@
               <button id="btn-confirm-clear-yes" class="btn-mini btn-danger" type="button">Remove All</button>
             </div>
           </div>
+          <div class="library-status-bar">
+            <span id="library-storage" class="library-storage">Storage: 0 MB used</span>
+            <button id="btn-keep-copy" class="btn-toggle" type="button" aria-pressed="true">
+              Keep Copy
+            </button>
+          </div>
           <p class="modal-note">
-            Files imported via + File are copied into your browser's private offline storage (IndexedDB). Removing a track here only deletes ChoreoLoop's copy - your original file on your phone is never touched. YouTube items only store the link and bookmarks.
+            With Keep Copy on, files are cached offline in IndexedDB for 1-tap loading. Turn Keep Copy off to stream large videos with 0 MB copy - your loops and settings still auto-restore when you re-select the file.
           </p>
           <div id="library-list" class="library-list"></div>
         </div>

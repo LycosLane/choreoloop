@@ -138,11 +138,40 @@ export async function getTrackMedia(id: string): Promise<Blob | null> {
   });
 }
 
-export async function saveImportedFile(file: File): Promise<TrackMetadata> {
+export async function findMatchingLocalTrack(file: File): Promise<TrackMetadata | undefined> {
+  const tracks = await listTracks();
+  const baseName = stripFileExtension(file.name);
+  const localTracks = tracks.filter((t) => t.mediaKind !== 'youtube');
+
+  const exact = localTracks.find(
+    (t) =>
+      (t.fileName === file.name || t.name === baseName) &&
+      t.size === file.size &&
+      t.lastModified !== undefined &&
+      t.lastModified === file.lastModified
+  );
+  if (exact) return exact;
+
+  return localTracks.find(
+    (t) => (t.fileName === file.name || t.name === baseName) && t.size === file.size
+  );
+}
+
+export interface SaveImportedResult {
+  meta: TrackMetadata;
+  quotaFallback: boolean;
+}
+
+export async function saveImportedFile(
+  file: File,
+  options: { keepLocalCopy?: boolean; existingTrack?: TrackMetadata } = {}
+): Promise<SaveImportedResult> {
   if (file.size === 0) {
     throw new Error('Selected file is empty (0 bytes) or still downloading from cloud storage.');
   }
 
+  const keepLocalCopy = options.keepLocalCopy ?? true;
+  const existing = options.existingTrack;
   const mediaKind = detectMediaKind(file);
   const mimeType = inferMimeType(file, mediaKind);
   const blob = file.slice(0, file.size, mimeType);
@@ -150,51 +179,65 @@ export async function saveImportedFile(file: File): Promise<TrackMetadata> {
   const now = Date.now();
 
   const meta: TrackMetadata = {
-    id: generateId(),
-    name: stripFileExtension(file.name),
+    id: existing?.id ?? generateId(),
+    name: existing?.name ?? stripFileExtension(file.name),
+    fileName: file.name,
     mimeType,
     mediaKind,
     size: file.size,
-    duration,
-    createdAt: now,
+    lastModified: file.lastModified,
+    hasOfflineCopy: existing?.hasOfflineCopy ?? false,
+    duration: duration > 0 ? duration : (existing?.duration ?? 0),
+    createdAt: existing?.createdAt ?? now,
     updatedAt: now,
-    bookmarks: [],
-    settings: normalizeTrackSettings(undefined),
-  };
-
-  const mediaRecord: TrackMediaRecord = {
-    id: meta.id,
-    mimeType,
-    data: blob,
+    bookmarks: existing?.bookmarks ?? [],
+    settings: existing?.settings ?? normalizeTrackSettings(undefined),
   };
 
   const db = await openDB();
-  try {
-    await new Promise<void>((resolve, reject) => {
-      const tx = db.transaction([META_STORE, MEDIA_STORE], 'readwrite');
-      tx.objectStore(META_STORE).put(meta);
-      tx.objectStore(MEDIA_STORE).put(mediaRecord);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => reject(tx.error ?? new Error('IndexedDB write failed'));
-      tx.onabort = () => reject(tx.error ?? new Error('IndexedDB transaction aborted'));
-    });
-  } catch (err) {
-    const name = err instanceof DOMException ? err.name : '';
-    if (name === 'QuotaExceededError') {
-      throw new Error(
-        'Not enough browser storage for this file. Delete old tracks in Library or trim/compress large 4K videos first.'
-      );
+  let quotaFallback = false;
+
+  if (keepLocalCopy && !existing?.hasOfflineCopy) {
+    const mediaRecord: TrackMediaRecord = {
+      id: meta.id,
+      mimeType,
+      data: blob,
+    };
+    try {
+      meta.hasOfflineCopy = true;
+      await new Promise<void>((resolve, reject) => {
+        const tx = db.transaction([META_STORE, MEDIA_STORE], 'readwrite');
+        tx.objectStore(META_STORE).put(meta);
+        tx.objectStore(MEDIA_STORE).put(mediaRecord);
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error ?? new Error('IndexedDB write failed'));
+        tx.onabort = () => reject(tx.error ?? new Error('IndexedDB transaction aborted'));
+      });
+    } catch (err) {
+      const errName = err instanceof DOMException ? err.name : '';
+      if (errName === 'QuotaExceededError') {
+        meta.hasOfflineCopy = false;
+        quotaFallback = true;
+        await updateTrackMeta(meta);
+      } else if (errName === 'NotReadableError') {
+        throw new Error(
+          'Could not read the file from device storage. If it is in cloud backup, download it locally first.'
+        );
+      } else {
+        throw new Error(
+          'Could not save this file locally. Try switching to Stream Mode (Keep Copy off) for large videos.'
+        );
+      }
     }
-    if (name === 'NotReadableError') {
-      throw new Error('Could not read the file from device storage. If it is in cloud backup, download it locally first.');
+  } else {
+    if (existing?.hasOfflineCopy === undefined && existing) {
+      meta.hasOfflineCopy = true;
     }
-    throw new Error(
-      'Could not save this file locally. Very large 4K/HEVC phone videos can exceed mobile browser memory limits.'
-    );
+    await updateTrackMeta(meta);
   }
 
   setLastActiveTrackId(meta.id);
-  return meta;
+  return { meta, quotaFallback };
 }
 
 export async function saveYouTubeTrack(youtubeId: string, title?: string): Promise<TrackMetadata> {

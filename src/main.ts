@@ -2,6 +2,7 @@ import './style.css';
 import {
   clearAllTracks,
   deleteTrack,
+  findMatchingLocalTrack,
   getLastActiveTrackId,
   getTrackMedia,
   getTrackMeta,
@@ -114,6 +115,9 @@ const guideModal = $<HTMLDivElement>('guide-modal');
 
 const libraryModal = $<HTMLDivElement>('library-modal');
 const libraryListEl = $<HTMLDivElement>('library-list');
+const libraryStorageEl = $<HTMLSpanElement>('library-storage');
+const btnKeepCopy = $<HTMLButtonElement>('btn-keep-copy');
+const btnKeepCopyMenu = $<HTMLButtonElement>('btn-keep-copy-menu');
 const btnClearLibrary = $<HTMLButtonElement>('btn-clear-library');
 const libraryConfirmEl = $<HTMLDivElement>('library-confirm');
 const libraryConfirmTextEl = $<HTMLSpanElement>('library-confirm-text');
@@ -129,6 +133,7 @@ const themeColorMetaEl = document.getElementById('theme-color-meta') as HTMLMeta
 
 const THEME_KEY = 'choreoloop:theme';
 const NUDGE_STEP_KEY = 'choreoloop:nudgeStep';
+const KEEP_COPY_KEY = 'choreoloop:keepLocalCopy';
 type AppTheme = 'dark' | 'light';
 
 // App State
@@ -138,6 +143,34 @@ let toastTimer: number | null = null;
 let saveDebounceTimer: number | null = null;
 let nudgeStep = 0.1;
 let isStageFullscreen = false;
+let keepLocalCopy = true;
+let pendingRelinkTrackId: string | null = null;
+const sessionFiles = new Map<string, File>();
+
+function syncKeepCopyUI(): void {
+  btnKeepCopy.classList.toggle('is-active', keepLocalCopy);
+  btnKeepCopy.setAttribute('aria-pressed', String(keepLocalCopy));
+  btnKeepCopyMenu.textContent = keepLocalCopy ? 'Keep Local Copy: On' : 'Keep Local Copy: Off';
+}
+
+function setKeepLocalCopy(enabled: boolean): void {
+  keepLocalCopy = enabled;
+  syncKeepCopyUI();
+  try {
+    localStorage.setItem(KEEP_COPY_KEY, enabled ? '1' : '0');
+  } catch {
+    // Ignore storage restriction
+  }
+}
+
+function loadKeepLocalCopy(): void {
+  try {
+    const raw = localStorage.getItem(KEEP_COPY_KEY);
+    setKeepLocalCopy(raw !== '0');
+  } catch {
+    setKeepLocalCopy(true);
+  }
+}
 
 function applyTheme(theme: AppTheme): void {
   document.documentElement.dataset.theme = theme;
@@ -446,12 +479,35 @@ function renderBookmarks(): void {
   }
 }
 
+async function updateStorageReadout(): Promise<void> {
+  const cachedBytes = tracks
+    .filter((t) => t.mediaKind !== 'youtube' && t.hasOfflineCopy !== false)
+    .reduce((sum, t) => sum + (t.size || 0), 0);
+  const streamCount = tracks.filter((t) => t.mediaKind !== 'youtube' && t.hasOfflineCopy === false).length;
+
+  let quotaPart = '';
+  try {
+    if (navigator.storage?.estimate) {
+      const est = await navigator.storage.estimate();
+      if (typeof est.quota === 'number' && est.quota > 0) {
+        quotaPart = ` of ${formatBytes(est.quota)} quota`;
+      }
+    }
+  } catch {
+    // Ignore estimate errors
+  }
+
+  const streamPart = streamCount > 0 ? ` · ${streamCount} stream-only` : '';
+  libraryStorageEl.textContent = `Offline cache: ${formatBytes(cachedBytes)}${quotaPart}${streamPart}`;
+}
+
 function renderLibrary(): void {
   libraryCountEl.textContent = String(tracks.length);
   btnClearLibrary.disabled = tracks.length === 0;
   if (tracks.length === 0) {
     libraryConfirmEl.classList.add('hidden');
   }
+  void updateStorageReadout();
   libraryListEl.innerHTML = '';
 
   if (tracks.length === 0) {
@@ -472,7 +528,15 @@ function renderLibrary(): void {
     const kindLabel =
       track.mediaKind === 'youtube' ? 'YOUTUBE' : track.mediaKind === 'video' ? 'VIDEO' : 'AUDIO';
     const durLabel = track.duration > 0 ? formatTime(track.duration, false) : '--:--';
-    const sizeOrNet = track.mediaKind === 'youtube' ? 'Online' : formatBytes(track.size);
+    let sizeOrNet = 'Online';
+    if (track.mediaKind !== 'youtube') {
+      if (track.hasOfflineCopy === false) {
+        const isLoaded = sessionFiles.has(track.id);
+        sizeOrNet = `${formatBytes(track.size)} · ${isLoaded ? 'Stream' : 'Re-select file'}`;
+      } else {
+        sizeOrNet = formatBytes(track.size);
+      }
+    }
     const bmCount = track.bookmarks.length;
     mainBtn.innerHTML = `
       <span class="library-item-title">${escapeHtml(track.name)}</span>
@@ -503,10 +567,34 @@ async function refreshTrackList(): Promise<void> {
   renderLibrary();
 }
 
-async function selectTrack(id: string): Promise<void> {
+async function selectTrack(id: string, allowPrompt = true): Promise<void> {
   const meta = await getTrackMeta(id);
   if (!meta) {
     showToast('Track metadata not found.');
+    return;
+  }
+
+  if (meta.mediaKind === 'youtube' && meta.youtubeId) {
+    activeTrack = meta;
+    setLastActiveTrackId(meta.id);
+    trackTitleEl.textContent = meta.name;
+    audioTrackNameEl.textContent = meta.name;
+    await player.loadYouTube(meta.youtubeId, meta.settings);
+    renderLibrary();
+    return;
+  }
+
+  let mediaSource: Blob | File | null = sessionFiles.get(id) ?? null;
+  if (!mediaSource && meta.hasOfflineCopy !== false) {
+    mediaSource = await getTrackMedia(id);
+  }
+
+  if (!mediaSource) {
+    if (allowPrompt) {
+      pendingRelinkTrackId = meta.id;
+      showToast(`Select "${meta.fileName || meta.name}" to resume with your saved loops.`, 4500);
+      fileInput.click();
+    }
     return;
   }
 
@@ -514,34 +602,43 @@ async function selectTrack(id: string): Promise<void> {
   setLastActiveTrackId(meta.id);
   trackTitleEl.textContent = meta.name;
   audioTrackNameEl.textContent = meta.name;
-
-  if (meta.mediaKind === 'youtube' && meta.youtubeId) {
-    await player.loadYouTube(meta.youtubeId, meta.settings);
-    renderLibrary();
-    return;
-  }
-
-  const blob = await getTrackMedia(id);
-  if (!blob) {
-    showToast('Track media data not found in local storage.');
-    return;
-  }
-
-  player.loadMedia(blob, meta.mediaKind === 'video' ? 'video' : 'audio', meta.settings);
+  player.loadMedia(mediaSource, meta.mediaKind === 'video' ? 'video' : 'audio', meta.settings);
   renderLibrary();
 }
 
 async function handleFilesImported(files: FileList | null): Promise<void> {
-  if (!files || files.length === 0) return;
+  if (!files || files.length === 0) {
+    pendingRelinkTrackId = null;
+    return;
+  }
+
+  const relinkId = pendingRelinkTrackId;
+  pendingRelinkTrackId = null;
 
   let lastImported: TrackMetadata | null = null;
-  for (const file of Array.from(files)) {
+  let lastWasMatched = false;
+  let lastQuotaFallback = false;
+
+  const fileList = Array.from(files);
+  for (let i = 0; i < fileList.length; i += 1) {
+    const file = fileList[i];
     try {
-      showToast(`Importing ${file.name}...`);
-      lastImported = await saveImportedFile(file);
+      showToast(keepLocalCopy ? `Importing ${file.name}...` : `Loading ${file.name}...`);
+      let existingTrack: TrackMetadata | undefined;
+      if (relinkId && i === 0 && fileList.length === 1) {
+        existingTrack = (await getTrackMeta(relinkId)) ?? undefined;
+      } else {
+        existingTrack = await findMatchingLocalTrack(file);
+      }
+
+      const result = await saveImportedFile(file, { keepLocalCopy, existingTrack });
+      sessionFiles.set(result.meta.id, file);
+      lastImported = result.meta;
+      lastWasMatched = Boolean(existingTrack);
+      lastQuotaFallback = result.quotaFallback;
     } catch (err) {
       console.error(err);
-      const msg = err instanceof Error ? err.message : `Failed to import ${file.name}`;
+      const msg = err instanceof Error ? err.message : `Failed to load ${file.name}`;
       showToast(msg, 5500);
     }
   }
@@ -549,7 +646,13 @@ async function handleFilesImported(files: FileList | null): Promise<void> {
   await refreshTrackList();
   if (lastImported) {
     await selectTrack(lastImported.id);
-    showToast(`Ready: ${lastImported.name}`);
+    if (lastQuotaFallback) {
+      showToast('Storage full: playing in Stream Mode (loops & settings saved).', 4500);
+    } else if (lastWasMatched) {
+      showToast(`Restored saved loops & settings for ${lastImported.name}`);
+    } else {
+      showToast(`Ready: ${lastImported.name}`);
+    }
   }
   fileInput.value = '';
 }
@@ -569,6 +672,7 @@ async function handleYouTubeImport(urlOrId: string, title?: string): Promise<voi
 
 async function handleDeleteTrack(id: string): Promise<void> {
   await deleteTrack(id);
+  sessionFiles.delete(id);
   if (activeTrack?.id === id) {
     activeTrack = null;
     trackTitleEl.textContent = 'No track loaded';
@@ -576,7 +680,7 @@ async function handleDeleteTrack(id: string): Promise<void> {
   }
   await refreshTrackList();
   if (!activeTrack && tracks.length > 0) {
-    await selectTrack(tracks[0].id);
+    await selectTrack(tracks[0].id, false);
   }
   showToast('Track deleted');
 }
@@ -703,6 +807,25 @@ btnTheme.addEventListener('click', () => {
   closeHeaderMenu();
 });
 
+btnKeepCopy.addEventListener('click', () => {
+  setKeepLocalCopy(!keepLocalCopy);
+  showToast(
+    keepLocalCopy
+      ? 'Keep Copy on: files will be cached offline'
+      : 'Keep Copy off: streaming files with 0 MB cache'
+  );
+});
+
+btnKeepCopyMenu.addEventListener('click', () => {
+  setKeepLocalCopy(!keepLocalCopy);
+  closeHeaderMenu();
+  showToast(
+    keepLocalCopy
+      ? 'Keep Local Copy: On'
+      : 'Keep Local Copy: Off (Stream Mode)'
+  );
+});
+
 const triggerImport = () => {
   closeHeaderMenu();
   fileInput.click();
@@ -767,6 +890,7 @@ $('btn-confirm-clear-cancel').addEventListener('click', () => {
 $('btn-confirm-clear-yes').addEventListener('click', () => {
   void (async () => {
     await clearAllTracks();
+    sessionFiles.clear();
     activeTrack = null;
     trackTitleEl.textContent = 'No track loaded';
     player.unload();
@@ -919,6 +1043,7 @@ async function checkIncomingSharedLink(): Promise<boolean> {
 async function init(): Promise<void> {
   initTheme();
   initNudgeStep();
+  loadKeepLocalCopy();
   renderPlayerState(player.getSnapshot());
   if (navigator.storage?.persist) {
     void navigator.storage.persist().catch(() => {});
@@ -930,9 +1055,9 @@ async function init(): Promise<void> {
 
   const lastId = getLastActiveTrackId();
   if (lastId && tracks.some((t) => t.id === lastId)) {
-    await selectTrack(lastId);
+    await selectTrack(lastId, false);
   } else if (tracks.length > 0) {
-    await selectTrack(tracks[0].id);
+    await selectTrack(tracks[0].id, false);
   }
 }
 
