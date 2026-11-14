@@ -231,6 +231,8 @@ button:disabled {
   border-radius: 999px;
   font-size: 11px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
 }
 
 /* Studio Main */
@@ -682,9 +684,22 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 10px;
-  padding-top: 4px;
+  padding-top: 8px;
   border-top: 1px solid var(--border);
+}
+
+.bpm-field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.subdivision-group {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 .bpm-controls {
@@ -702,6 +717,10 @@ button:disabled {
   border: 1px solid var(--border);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+}
+
+.beat-count-input {
+  width: 48px;
 }
 
 .bpm-effective {
@@ -1123,6 +1142,7 @@ button:disabled {
 
 .modal-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 8px;
 }
 

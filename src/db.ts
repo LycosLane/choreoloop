@@ -40,16 +40,43 @@ function openDB(): Promise<IDBDatabase> {
 
 function normalizeTrackSettings(raw: Partial<TrackMetadata['settings']> | undefined): TrackMetadata['settings'] {
   const legacySec = (raw as { countInSeconds?: number } | undefined)?.countInSeconds;
-  let countInMode = raw?.countInMode ?? 'off';
-  if (!raw?.countInMode && typeof legacySec === 'number') {
-    countInMode = legacySec === 3 ? '3s' : legacySec === 5 ? '5s' : 'off';
+  const legacyMode = raw?.countInMode as string | undefined;
+
+  let countInEnabled = raw?.countInEnabled ?? false;
+  let countInMode: TrackMetadata['settings']['countInMode'] = '3s';
+  let beatCount = raw?.beatCount ?? 4;
+  const beatSubdivision: TrackMetadata['settings']['beatSubdivision'] =
+    raw?.beatSubdivision === 2 || raw?.beatSubdivision === 4 ? raw.beatSubdivision : 1;
+
+  if (legacyMode === '3s' || legacyMode === '5s' || legacyMode === 'beats') {
+    countInMode = legacyMode;
+    if (raw?.countInEnabled === undefined) {
+      countInEnabled = true;
+    }
+  } else if (legacyMode === '4beats' || legacyMode === '8beats') {
+    countInMode = 'beats';
+    if (raw?.countInEnabled === undefined) {
+      countInEnabled = true;
+    }
+    if (raw?.beatCount === undefined) {
+      beatCount = legacyMode === '8beats' ? 8 : 4;
+    }
+  } else if (legacyMode === 'off') {
+    countInEnabled = false;
+  } else if (typeof legacySec === 'number' && legacySec > 0) {
+    countInEnabled = true;
+    countInMode = legacySec === 5 ? '5s' : '3s';
   }
+
   return {
     speed: raw?.speed ?? 1.0,
     mirror: raw?.mirror ?? false,
+    countInEnabled,
     countInMode,
     repeatCountInOnLoop: raw?.repeatCountInOnLoop ?? true,
     bpm: raw?.bpm ?? 120,
+    beatCount: Math.max(1, Math.min(16, Math.round(beatCount))),
+    beatSubdivision,
     pointA: raw?.pointA ?? null,
     pointB: raw?.pointB ?? null,
     loopEnabled: raw?.loopEnabled ?? false,

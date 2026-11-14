@@ -1,4 +1,4 @@
-import type { CountInMode, MediaKind, TrackSettings } from './types';
+import type { BeatSubdivision, CountInMode, MediaKind, TrackSettings } from './types';
 import { clamp, playCountInTone } from './utils';
 import { loadYouTubeAPI, type YTPlayerInstance } from './youtube';
 
@@ -8,9 +8,12 @@ export interface PlayerStateSnapshot {
   duration: number;
   speed: number;
   mirror: boolean;
+  countInEnabled: boolean;
   countInMode: CountInMode;
   repeatCountInOnLoop: boolean;
   bpm: number;
+  beatCount: number;
+  beatSubdivision: BeatSubdivision;
   countInRemaining: number | null;
   pointA: number | null;
   pointB: number | null;
@@ -55,9 +58,12 @@ export class ChoreoPlayer {
 
   private speed = 1.0;
   private mirror = false;
-  private countInMode: CountInMode = 'off';
+  private countInEnabled = false;
+  private countInMode: CountInMode = '3s';
   private repeatCountInOnLoop = true;
   private bpm = 120;
+  private beatCount = 4;
+  private beatSubdivision: BeatSubdivision = 1;
   private countInRemaining: number | null = null;
   private pointA: number | null = null;
   private pointB: number | null = null;
@@ -220,9 +226,12 @@ export class ChoreoPlayer {
   private applyTrackSettings(settings: TrackSettings): void {
     this.speed = clamp(settings.speed, 0.25, 1.25);
     this.mirror = settings.mirror;
+    this.countInEnabled = settings.countInEnabled;
     this.countInMode = settings.countInMode;
     this.repeatCountInOnLoop = settings.repeatCountInOnLoop ?? true;
     this.bpm = clamp(settings.bpm || 120, 40, 240);
+    this.beatCount = clamp(Math.round(settings.beatCount || 4), 1, 16);
+    this.beatSubdivision = settings.beatSubdivision === 2 || settings.beatSubdivision === 4 ? settings.beatSubdivision : 1;
     this.pointA = settings.pointA;
     this.pointB = settings.pointB;
     this.loopEnabled = settings.loopEnabled;
@@ -271,7 +280,7 @@ export class ChoreoPlayer {
       return;
     }
 
-    if (this.countInMode !== 'off') {
+    if (this.countInEnabled) {
       this.startCountIn();
     } else {
       this.startPlayback();
@@ -363,16 +372,16 @@ export class ChoreoPlayer {
       }
     }
 
-    const isBeats = this.countInMode === '4beats' || this.countInMode === '8beats';
+    const isBeats = this.countInMode === 'beats';
     const totalSteps =
       this.countInMode === '3s'
         ? 3
         : this.countInMode === '5s'
           ? 5
-          : this.countInMode === '4beats'
-            ? 4
-            : 8;
-    const stepMs = isBeats ? Math.round(60000 / (this.bpm * this.speed)) : 1000;
+          : this.beatCount;
+    const stepMs = isBeats
+      ? Math.max(80, Math.round(60000 / (this.bpm * this.speed * this.beatSubdivision)))
+      : 1000;
 
     let stepIndex = 1;
     this.countInRemaining = isBeats ? 1 : totalSteps;
@@ -476,8 +485,20 @@ export class ChoreoPlayer {
     this.ytContainerEl.classList.remove('is-mirrored');
   }
 
+  public toggleCountIn(): void {
+    this.countInEnabled = !this.countInEnabled;
+    if (!this.countInEnabled) {
+      this.cancelCountIn();
+    }
+    this.emitState();
+    this.callbacks.onSettingsChanged();
+  }
+
   public setCountInMode(mode: CountInMode): void {
     this.countInMode = mode;
+    if (!this.countInEnabled) {
+      this.countInEnabled = true;
+    }
     this.emitState();
     this.callbacks.onSettingsChanged();
   }
@@ -490,6 +511,18 @@ export class ChoreoPlayer {
 
   public setBpm(bpm: number): void {
     this.bpm = clamp(Math.round(bpm), 40, 240);
+    this.emitState();
+    this.callbacks.onSettingsChanged();
+  }
+
+  public setBeatCount(count: number): void {
+    this.beatCount = clamp(Math.round(count), 1, 16);
+    this.emitState();
+    this.callbacks.onSettingsChanged();
+  }
+
+  public setBeatSubdivision(subdivision: BeatSubdivision): void {
+    this.beatSubdivision = subdivision;
     this.emitState();
     this.callbacks.onSettingsChanged();
   }
@@ -590,7 +623,7 @@ export class ChoreoPlayer {
     }
     if (this.getCurrentTimeInternal() >= this.pointB) {
       this.seekInternal(this.pointA);
-      if (this.countInMode !== 'off' && this.repeatCountInOnLoop && this.countInRemaining === null) {
+      if (this.countInEnabled && this.repeatCountInOnLoop && this.countInRemaining === null) {
         this.pauseNow();
         this.stopLoopMonitor();
         this.startCountIn();
@@ -626,9 +659,12 @@ export class ChoreoPlayer {
       duration: this.getDurationInternal(),
       speed: this.speed,
       mirror: this.mirror,
+      countInEnabled: this.countInEnabled,
       countInMode: this.countInMode,
       repeatCountInOnLoop: this.repeatCountInOnLoop,
       bpm: this.bpm,
+      beatCount: this.beatCount,
+      beatSubdivision: this.beatSubdivision,
       countInRemaining: this.countInRemaining,
       pointA: this.pointA,
       pointB: this.pointB,

@@ -12,7 +12,7 @@ import {
   updateTrackMeta,
 } from './db';
 import { ChoreoPlayer, type PlayerStateSnapshot } from './player';
-import type { CountInMode, LoopBookmark, TrackMetadata } from './types';
+import type { BeatSubdivision, CountInMode, LoopBookmark, TrackMetadata } from './types';
 import { clamp, formatBytes, formatTime, generateId } from './utils';
 import { extractYouTubeId } from './youtube';
 
@@ -63,12 +63,17 @@ const playIconEl = $<HTMLSpanElement>('play-icon');
 const btnFwd5 = $<HTMLButtonElement>('btn-fwd-5');
 
 const btnMirror = $<HTMLButtonElement>('btn-mirror');
+const btnCountInToggle = $<HTMLButtonElement>('btn-countin-toggle');
 const countInButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-countin]'));
 const btnLoopCountIn = $<HTMLButtonElement>('btn-loop-countin');
 const bpmRowEl = $<HTMLDivElement>('bpm-row');
 const bpmInput = $<HTMLInputElement>('bpm-input');
 const btnBpmMinus = $<HTMLButtonElement>('btn-bpm-minus');
 const btnBpmPlus = $<HTMLButtonElement>('btn-bpm-plus');
+const beatCountInput = $<HTMLInputElement>('beat-count-input');
+const btnBeatCountMinus = $<HTMLButtonElement>('btn-beat-count-minus');
+const btnBeatCountPlus = $<HTMLButtonElement>('btn-beat-count-plus');
+const subdivisionButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-subdivision]'));
 const bpmEffectiveEl = $<HTMLSpanElement>('bpm-effective');
 
 const btnSetA = $<HTMLButtonElement>('btn-set-a');
@@ -222,9 +227,12 @@ function scheduleSaveTrackSettings(): void {
   activeTrack.settings = {
     speed: snap.speed,
     mirror: snap.mirror,
+    countInEnabled: snap.countInEnabled,
     countInMode: snap.countInMode,
     repeatCountInOnLoop: snap.repeatCountInOnLoop,
     bpm: snap.bpm,
+    beatCount: snap.beatCount,
+    beatSubdivision: snap.beatSubdivision,
     pointA: snap.pointA,
     pointB: snap.pointB,
     loopEnabled: snap.loopEnabled,
@@ -254,10 +262,13 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
   }
 
   // Count-In overlay (only over local stage; YouTube uses native player without overlays)
+  const gridLabel = snap.beatSubdivision === 4 ? '1/16' : snap.beatSubdivision === 2 ? '1/8' : '1/4';
   if (snap.countInRemaining !== null) {
     countInOverlay.classList.remove('hidden');
-    const isBeats = snap.countInMode === '4beats' || snap.countInMode === '8beats';
-    countInLabelEl.textContent = isBeats ? `BEAT COUNT (${Math.round(snap.bpm * snap.speed)} BPM)` : 'GET READY';
+    const isBeats = snap.countInMode === 'beats';
+    countInLabelEl.textContent = isBeats
+      ? `BEAT COUNT (${snap.beatCount} x ${gridLabel} @ ${Math.round(snap.bpm * snap.speed)} BPM)`
+      : 'GET READY';
     countInNumberEl.textContent = String(snap.countInRemaining);
   } else {
     countInOverlay.classList.add('hidden');
@@ -286,24 +297,35 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
   ytMirrorNoteEl.classList.toggle('hidden', !isYouTube);
   ytSpeedNoteEl.classList.toggle('hidden', !isYouTube);
 
-  // Count-in chips & BPM row
+  // Count-in toggle, Once/Loop switch, mode chips & Beat Grid row
+  btnCountInToggle.classList.toggle('is-active', snap.countInEnabled);
+  btnCountInToggle.setAttribute('aria-pressed', String(snap.countInEnabled));
+  btnCountInToggle.textContent = snap.countInEnabled ? 'Count-In: On' : 'Count-In: Off';
+
+  btnLoopCountIn.classList.toggle('hidden', !snap.countInEnabled);
+  btnLoopCountIn.classList.toggle('is-active', snap.repeatCountInOnLoop);
+  btnLoopCountIn.setAttribute('aria-pressed', String(snap.repeatCountInOnLoop));
+  btnLoopCountIn.textContent = snap.repeatCountInOnLoop ? 'Loop' : 'Once';
+
   for (const btn of countInButtons) {
     btn.classList.toggle('is-active', btn.dataset.countin === snap.countInMode);
   }
-  const hasCountIn = snap.countInMode !== 'off';
-  btnLoopCountIn.classList.toggle('hidden', !hasCountIn);
-  btnLoopCountIn.classList.toggle('is-active', snap.repeatCountInOnLoop);
-  btnLoopCountIn.setAttribute('aria-pressed', String(snap.repeatCountInOnLoop));
-  btnLoopCountIn.textContent = snap.repeatCountInOnLoop ? 'Every Loop: On' : 'Every Loop: Off';
 
-  const showBpm = snap.countInMode === '4beats' || snap.countInMode === '8beats';
+  const showBpm = snap.countInEnabled && snap.countInMode === 'beats';
   bpmRowEl.classList.toggle('hidden', !showBpm);
   if (document.activeElement !== bpmInput) {
     bpmInput.value = String(snap.bpm);
   }
+  if (document.activeElement !== beatCountInput) {
+    beatCountInput.value = String(snap.beatCount);
+  }
+  for (const btn of subdivisionButtons) {
+    btn.classList.toggle('is-active', Number(btn.dataset.subdivision) === snap.beatSubdivision);
+  }
   const effectiveBpm = Math.round(snap.bpm * snap.speed);
-  bpmEffectiveEl.textContent =
+  const bpmSuffix =
     Math.abs(snap.speed - 1.0) < 0.01 ? `${snap.bpm} BPM` : `${effectiveBpm} eff. BPM`;
+  bpmEffectiveEl.textContent = `${snap.beatCount} x ${gridLabel} @ ${bpmSuffix}`;
 
   // A-B Loop buttons
   const hasA = snap.pointA !== null;
@@ -775,9 +797,13 @@ btnCancelCountIn.addEventListener('click', () => player.cancelCountIn());
 
 btnMirror.addEventListener('click', () => player.toggleMirror());
 
+btnCountInToggle.addEventListener('click', () => {
+  player.toggleCountIn();
+});
+
 for (const btn of countInButtons) {
   btn.addEventListener('click', () => {
-    player.setCountInMode((btn.dataset.countin ?? 'off') as CountInMode);
+    player.setCountInMode((btn.dataset.countin ?? '3s') as CountInMode);
   });
 }
 
@@ -791,6 +817,22 @@ bpmInput.addEventListener('change', () => {
 });
 btnBpmMinus.addEventListener('click', () => player.setBpm(player.getSnapshot().bpm - 5));
 btnBpmPlus.addEventListener('click', () => player.setBpm(player.getSnapshot().bpm + 5));
+
+beatCountInput.addEventListener('change', () => {
+  const val = Number(beatCountInput.value);
+  if (Number.isFinite(val)) player.setBeatCount(val);
+});
+btnBeatCountMinus.addEventListener('click', () => player.setBeatCount(player.getSnapshot().beatCount - 1));
+btnBeatCountPlus.addEventListener('click', () => player.setBeatCount(player.getSnapshot().beatCount + 1));
+
+for (const btn of subdivisionButtons) {
+  btn.addEventListener('click', () => {
+    const sub = Number(btn.dataset.subdivision);
+    if (sub === 1 || sub === 2 || sub === 4) {
+      player.setBeatSubdivision(sub as BeatSubdivision);
+    }
+  });
+}
 
 for (const btn of stepButtons) {
   btn.addEventListener('click', () => {

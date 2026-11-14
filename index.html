@@ -41,7 +41,7 @@
           <div class="menu-wrap">
             <button
               id="btn-menu"
-              class="btn-pill btn-accent btn-menu-dots"
+              class="btn-pill btn-surface btn-menu-dots"
               type="button"
               aria-haspopup="true"
               aria-expanded="false"
@@ -193,36 +193,65 @@
               Mirror: Off
             </button>
             <div class="countin-section">
-              <span class="group-label">Count-In</span>
-              <div class="countin-group" role="group" aria-label="Count-in timer">
-                <button class="btn-chip is-active" data-countin="off" type="button">Off</button>
-                <button class="btn-chip" data-countin="3s" type="button">3s</button>
-                <button class="btn-chip" data-countin="5s" type="button">5s</button>
-                <button class="btn-chip" data-countin="4beats" type="button">4 Beats</button>
-                <button class="btn-chip" data-countin="8beats" type="button">8 Beats</button>
-              </div>
-              <button id="btn-loop-countin" class="btn-chip hidden" type="button" aria-pressed="true">
-                Every Loop: On
+              <button id="btn-countin-toggle" class="btn-toggle" type="button" aria-pressed="false">
+                Count-In: Off
               </button>
+              <button id="btn-loop-countin" class="btn-toggle hidden" type="button" aria-pressed="true">
+                Loop
+              </button>
+              <div class="countin-group" role="group" aria-label="Count-in mode">
+                <button class="btn-chip is-active" data-countin="3s" type="button">3s</button>
+                <button class="btn-chip" data-countin="5s" type="button">5s</button>
+                <button class="btn-chip" data-countin="beats" type="button">Beats</button>
+              </div>
             </div>
           </div>
 
           <div id="bpm-row" class="bpm-row hidden">
-            <label for="bpm-input" class="group-label">Track BPM</label>
-            <div class="bpm-controls">
-              <button id="btn-bpm-minus" class="btn-mini btn-surface" type="button">-5</button>
-              <input
-                id="bpm-input"
-                class="bpm-input"
-                type="number"
-                min="40"
-                max="240"
-                step="1"
-                value="120"
-              />
-              <button id="btn-bpm-plus" class="btn-mini btn-surface" type="button">+5</button>
+            <div class="bpm-field">
+              <label for="bpm-input" class="group-label">BPM</label>
+              <div class="bpm-controls">
+                <button id="btn-bpm-minus" class="btn-mini btn-surface" type="button">-5</button>
+                <input
+                  id="bpm-input"
+                  class="bpm-input"
+                  type="number"
+                  min="40"
+                  max="240"
+                  step="1"
+                  value="120"
+                />
+                <button id="btn-bpm-plus" class="btn-mini btn-surface" type="button">+5</button>
+              </div>
             </div>
-            <span id="bpm-effective" class="bpm-effective">120 BPM</span>
+
+            <div class="bpm-field">
+              <label for="beat-count-input" class="group-label">Beats</label>
+              <div class="bpm-controls">
+                <button id="btn-beat-count-minus" class="btn-mini btn-surface" type="button">-</button>
+                <input
+                  id="beat-count-input"
+                  class="bpm-input beat-count-input"
+                  type="number"
+                  min="1"
+                  max="16"
+                  step="1"
+                  value="4"
+                />
+                <button id="btn-beat-count-plus" class="btn-mini btn-surface" type="button">+</button>
+              </div>
+            </div>
+
+            <div class="bpm-field">
+              <span class="group-label">Grid</span>
+              <div class="subdivision-group" role="group" aria-label="Beat grid subdivision">
+                <button class="btn-chip is-active" data-subdivision="1" type="button">1/4</button>
+                <button class="btn-chip" data-subdivision="2" type="button">1/8</button>
+                <button class="btn-chip" data-subdivision="4" type="button">1/16</button>
+              </div>
+            </div>
+
+            <span id="bpm-effective" class="bpm-effective">4 x 1/4 @ 120 BPM</span>
           </div>
 
           <p id="yt-mirror-note" class="restriction-note hidden">
@@ -461,7 +490,7 @@
               <button id="btn-clear-library" class="btn-pill btn-danger-outline" type="button" disabled>
                 Clear All
               </button>
-              <button id="btn-yt-modal" class="btn-pill btn-surface" type="button">+ YT</button>
+              <button id="btn-yt-modal" class="btn-pill btn-accent" type="button">+ YouTube</button>
               <button id="btn-import-modal" class="btn-pill btn-accent" type="button">+ File</button>
               <button id="btn-close-library" class="btn-pill btn-surface" type="button">Close</button>
             </div>
