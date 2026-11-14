@@ -669,7 +669,8 @@ button:disabled {
 }
 
 .btn-toggle {
-  min-height: 40px;
+  height: 36px;
+  min-height: 36px;
   padding: 0 12px;
   border-radius: var(--radius-sm);
   background: var(--card);
@@ -677,6 +678,9 @@ button:disabled {
   font-size: 13px;
   font-weight: 600;
   color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-toggle.is-active {
@@ -708,6 +712,12 @@ button:disabled {
   padding: 2px;
   gap: 2px;
   flex-wrap: wrap;
+}
+
+.countin-group .btn-step {
+  min-height: 30px;
+  height: 30px;
+  padding: 0 10px;
 }
 
 .bpm-row {
@@ -777,13 +787,17 @@ button:disabled {
 }
 
 .btn-step {
-  min-height: 28px;
+  min-height: 26px;
+  height: 26px;
   padding: 0 8px;
-  border-radius: 6px;
+  border-radius: calc(var(--radius-sm) - 3px);
   font-size: 12px;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .btn-step.is-active {
@@ -889,11 +903,12 @@ button:disabled {
 .btn-chip {
   min-height: 36px;
   padding: 0 11px;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   background: var(--card);
   border: 1px solid var(--border);
   font-size: 13px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
   color: var(--text-muted);
 }
 
