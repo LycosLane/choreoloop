@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <rect width="512" height="512" rx="112" fill="#101216"/>
+  <!-- 26 Thick 40px + Big Fedora -->
+  <circle cx="256" cy="256" r="190" fill="none" stroke="#1E222B" stroke-width="40"/>
+  <path d="M 147.02 411.64 A 190 190 0 0 1 184.82 79.84" fill="none" stroke="#00B4FF" stroke-width="40" stroke-linecap="round"/>
+  <path d="M 177.33 61.29 A 210.0 210.0 0 0 1 263.33 46.13 L 207.3 135.47 L 192.32 98.38 Z" fill="#00B4FF"/>
+  <path d="M 364.98 100.36 A 190 190 0 0 1 327.18 432.16" fill="none" stroke="#F43F5E" stroke-width="40" stroke-linecap="round"/>
+  <path d="M 334.67 450.71 A 210.0 210.0 0 0 1 248.67 465.87 L 304.7 376.53 L 319.68 413.62 Z" fill="#F43F5E"/>
+  <g transform="translate(256, 246) scale(0.82) translate(-256, -258) rotate(-6 256 256)">
+    <rect x="124" y="330" width="64" height="94" rx="24" fill="#F43F5E"/>
+    <rect x="324" y="330" width="64" height="94" rx="24" fill="#00B4FF"/>
+    <path d="M 162 252 L 186 162 L 208 150 L 256 196 L 304 150 L 326 162 L 350 252 Q 256 264 162 252 Z" fill="#FFFFFF"/>
+    <path d="M 220 154 L 256 165 L 292 154 L 256 186 Z" fill="#FFFFFF"/>
+    <path d="M 159 264 Q 232 273 300 269 L 305 305 Q 234 310 151 300 Z" fill="#00B4FF"/>
+    <path d="M 315 268 Q 334 266 353 264 L 361 300 Q 342 303 320 305 Z" fill="#F43F5E"/>
+    <path d="M 86 312 L 150 312 Q 256 326 362 312 L 426 312 C 394 362, 330 384, 256 384 C 182 384, 118 362, 86 312 Z" fill="#FFFFFF"/>
+  </g>
+</svg>
