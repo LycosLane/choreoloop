@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>ChoreoLoop - Dance Practice &amp; A-B Loop Studio</title>
+    <meta
+      name="description"
+      content="Offline-first PWA for dancers with A-B looping, slow-motion speed control, video mirror mode, and count-in timer."
+    />
+    <meta name="theme-color" content="#101216" />
+
+    <!-- iOS Home Screen PWA support -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ChoreoLoop" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+
+    <link rel="icon" type="image/svg+xml" href="./icons/choreoloop.svg" />
+    <link rel="manifest" href="./manifest.json" />
+  </head>
+  <body>
+    <div id="app" class="app-shell">
+      <!-- Top Header -->
+      <header class="top-bar">
+        <div class="brand">
+          <img src="./icons/choreoloop.svg" alt="ChoreoLoop" class="brand-icon" />
+          <div class="brand-text">
+            <span class="brand-name">ChoreoLoop</span>
+            <span id="track-title" class="track-subtitle">No track loaded</span>
+          </div>
+        </div>
+        <div class="top-actions">
+          <button id="btn-import-top" class="btn-pill btn-accent" type="button" aria-label="Import media">
+            + Import
+          </button>
+          <button id="btn-library" class="btn-pill btn-surface" type="button" aria-label="Open library">
+            Library <span id="library-count" class="badge">0</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Hidden File Input (iOS Photos & Files compatible) -->
+      <input
+        id="file-input"
+        type="file"
+        accept="audio/*,video/*,.mp3,.m4a,.wav,.mp4,.mov"
+        multiple
+        hidden
+      />
+
+      <!-- Main Studio Content -->
+      <main class="studio-main">
+        <!-- Media Stage -->
+        <section class="stage-card" aria-label="Media stage">
+          <!-- Empty State -->
+          <div id="stage-empty" class="stage-empty">
+            <img src="./icons/choreoloop.svg" alt="" class="empty-logo" />
+            <h1 class="empty-title">Ready to Practice</h1>
+            <p class="empty-desc">
+              Import music or dance videos (MP3, M4A, WAV, MP4, MOV). Everything stays 100% offline on your device.
+            </p>
+            <button id="btn-import-empty" class="btn-primary btn-lg" type="button">
+              Import Audio or Video
+            </button>
+          </div>
+
+          <!-- Video Viewport -->
+          <div id="stage-video-wrap" class="stage-video-wrap hidden">
+            <video
+              id="video-player"
+              class="video-el"
+              playsinline
+              webkit-playsinline
+              preload="auto"
+            ></video>
+            <span id="mirror-badge" class="stage-badge hidden">MIRRORED</span>
+          </div>
+
+          <!-- Audio Stage -->
+          <div id="stage-audio-wrap" class="stage-audio-wrap hidden">
+            <div class="audio-disc" id="audio-disc">
+              <img src="./icons/choreoloop.svg" alt="" class="audio-disc-icon" />
+            </div>
+            <div class="audio-meta">
+              <span id="audio-track-name" class="audio-track-name">Track</span>
+              <span id="audio-loop-status" class="audio-status">Audio Mode</span>
+            </div>
+          </div>
+
+          <audio id="audio-player" preload="auto"></audio>
+
+          <!-- Count-In Overlay -->
+          <div id="countin-overlay" class="countin-overlay hidden" role="status" aria-live="assertive">
+            <span class="countin-label">GET READY</span>
+            <span id="countin-number" class="countin-number">3</span>
+            <button id="btn-cancel-countin" class="btn-pill btn-surface" type="button">
+              Cancel
+            </button>
+          </div>
+        </section>
+
+        <!-- Timeline & A-B Scrubber -->
+        <section class="timeline-card" aria-label="Playback timeline">
+          <div class="time-row">
+            <span id="time-current" class="time-mono">00:00.0</span>
+            <span id="loop-span-readout" class="loop-span-readout"></span>
+            <span id="time-duration" class="time-mono muted">00:00.0</span>
+          </div>
+
+          <div
+            id="scrubber"
+            class="scrubber"
+            role="slider"
+            tabindex="0"
+            aria-label="Seek timeline"
+            aria-valuemin="0"
+            aria-valuemax="100"
+            aria-valuenow="0"
+          >
+            <div class="scrubber-track">
+              <div id="scrubber-ab-range" class="scrubber-ab-range hidden"></div>
+              <div id="scrubber-progress" class="scrubber-progress"></div>
+            </div>
+            <div id="marker-a" class="marker-pin marker-a hidden" title="Point A">A</div>
+            <div id="marker-b" class="marker-pin marker-b hidden" title="Point B">B</div>
+            <div id="scrubber-thumb" class="scrubber-thumb"></div>
+          </div>
+
+          <!-- Primary Transport & Dance Extras -->
+          <div class="transport-row">
+            <button id="btn-back-5" class="btn-icon-text" type="button" aria-label="Rewind 5 seconds">
+              -5s
+            </button>
+            <button id="btn-play" class="btn-play" type="button" aria-label="Play or pause">
+              <span id="play-icon">&#9654;</span>
+            </button>
+            <button id="btn-fwd-5" class="btn-icon-text" type="button" aria-label="Forward 5 seconds">
+              +5s
+            </button>
+          </div>
+
+          <div class="extras-row">
+            <button id="btn-mirror" class="btn-toggle" type="button" aria-pressed="false">
+              Mirror: Off
+            </button>
+            <div class="countin-group" role="group" aria-label="Count-in timer">
+              <span class="group-label">Count-In</span>
+              <button class="btn-chip is-active" data-countin="0" type="button">Off</button>
+              <button class="btn-chip" data-countin="3" type="button">3s</button>
+              <button class="btn-chip" data-countin="5" type="button">5s</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- A-B Loop Controls -->
+        <section class="panel-card" aria-label="A-B Loop Controls">
+          <div class="panel-header">
+            <h2 class="panel-title">A-B Loop</h2>
+            <button id="btn-save-bookmark" class="btn-mini btn-accent" type="button" disabled>
+              + Save Loop
+            </button>
+          </div>
+
+          <div class="ab-grid">
+            <button id="btn-set-a" class="btn-ab btn-ab-a" type="button">Set A</button>
+            <button id="btn-set-b" class="btn-ab btn-ab-b" type="button">Set B</button>
+            <button id="btn-loop-toggle" class="btn-ab btn-ab-loop" type="button" aria-pressed="false">
+              Loop Off
+            </button>
+            <button id="btn-clear-ab" class="btn-ab btn-ab-clear" type="button">Clear A-B</button>
+          </div>
+
+          <!-- Fine-tuning A and B -->
+          <div class="nudge-grid">
+            <div class="nudge-box">
+              <button id="btn-jump-a" class="nudge-label" type="button" title="Jump to A">
+                A: <span id="label-a">--:--.-</span>
+              </button>
+              <div class="nudge-btns">
+                <button id="btn-a-minus" class="btn-nudge" type="button" disabled>-0.5s</button>
+                <button id="btn-a-plus" class="btn-nudge" type="button" disabled>+0.5s</button>
+              </div>
+            </div>
+            <div class="nudge-box">
+              <button id="btn-jump-b" class="nudge-label" type="button" title="Jump to B">
+                B: <span id="label-b">--:--.-</span>
+              </button>
+              <div class="nudge-btns">
+                <button id="btn-b-minus" class="btn-nudge" type="button" disabled>-0.5s</button>
+                <button id="btn-b-plus" class="btn-nudge" type="button" disabled>+0.5s</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Inline Bookmark Creator -->
+          <form id="bookmark-form" class="bookmark-form hidden">
+            <input
+              id="bookmark-name-input"
+              type="text"
+              class="text-input"
+              placeholder="Section name (e.g. Chorus, Bridge)"
+              maxlength="32"
+              required
+            />
+            <button class="btn-mini btn-accent" type="submit">Save</button>
+            <button id="btn-cancel-bookmark" class="btn-mini btn-surface" type="button">Cancel</button>
+          </form>
+
+          <!-- Saved Loop Bookmarks -->
+          <div id="bookmarks-list" class="bookmarks-list">
+            <span class="empty-hint">Set A and B, then tap "+ Save Loop" to bookmark sections.</span>
+          </div>
+        </section>
+
+        <!-- Speed / Slow-Motion Controls -->
+        <section class="panel-card" aria-label="Playback Speed">
+          <div class="panel-header">
+            <h2 class="panel-title">Speed (Pitch Preserved)</h2>
+            <span id="speed-readout" class="speed-readout">1.00x</span>
+          </div>
+
+          <div class="speed-presets">
+            <button class="btn-chip" data-speed="0.5" type="button">0.5x</button>
+            <button class="btn-chip" data-speed="0.75" type="button">0.75x</button>
+            <button class="btn-chip" data-speed="0.85" type="button">0.85x</button>
+            <button class="btn-chip is-active" data-speed="1" type="button">1.0x</button>
+          </div>
+
+          <div class="slider-row">
+            <span class="slider-bound">0.25x</span>
+            <input
+              id="speed-slider"
+              class="speed-slider"
+              type="range"
+              min="0.25"
+              max="1.25"
+              step="0.05"
+              value="1.0"
+              aria-label="Playback speed slider"
+            />
+            <span class="slider-bound">1.25x</span>
+          </div>
+        </section>
+      </main>
+
+      <!-- Toast Notification -->
+      <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+      <!-- Library Drawer Modal -->
+      <div id="library-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="Track Library">
+        <div class="modal-sheet">
+          <div class="modal-header">
+            <h2 class="modal-title">Local Library</h2>
+            <div class="modal-actions">
+              <button id="btn-import-modal" class="btn-pill btn-accent" type="button">+ Import</button>
+              <button id="btn-close-library" class="btn-pill btn-surface" type="button">Close</button>
+            </div>
+          </div>
+          <p class="modal-note">Stored locally in IndexedDB. Works 100% offline.</p>
+          <div id="library-list" class="library-list"></div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
