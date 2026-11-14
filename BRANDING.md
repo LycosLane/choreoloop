@@ -41,13 +41,16 @@ The logo is built from pure flat geometric vector shapes:
 - Primary Text: `#ECEFF4`
 - Secondary Text: `#94A3B8`
 
-#### Light Theme
+#### Light Theme (Bright Mode + Black Fedora)
 - Scaffold Background: `#F8FAFC`
 - Surface / App Bar: `#FFFFFF`
-- Card / Container: `#FFFFFF`
+- Card / Container: `#F1F5F9`
 - Border / Divider: `#E2E8F0`
 - Primary Text: `#0F172A`
 - Secondary Text: `#64748B`
+- Deep Suite Cyan (WCAG contrast): `#0284C7`
+- Deep Choreo Rose (WCAG contrast): `#E11D48`
+- Deep Loop Mint (WCAG contrast): `#059669`
 
 ## Modular Ribbon System
 

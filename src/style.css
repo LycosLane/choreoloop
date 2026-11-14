@@ -23,9 +23,20 @@
   --border: #e2e8f0;
   --text: #0f172a;
   --text-muted: #64748b;
-  --cyan-soft: rgba(0, 180, 255, 0.14);
-  --rose-soft: rgba(244, 63, 94, 0.14);
-  --mint-soft: rgba(16, 185, 129, 0.14);
+  --cyan: #0284c7;
+  --cyan-soft: rgba(2, 132, 199, 0.14);
+  --rose: #e11d48;
+  --rose-soft: rgba(225, 29, 72, 0.13);
+  --mint: #059669;
+  --mint-soft: rgba(5, 150, 105, 0.14);
+}
+
+:root[data-theme='light'] .btn-accent,
+:root[data-theme='light'] .btn-primary,
+:root[data-theme='light'] .btn-play,
+:root[data-theme='light'] .btn-chip.is-active,
+:root[data-theme='light'] .btn-ab-loop.is-active {
+  color: #ffffff;
 }
 
 :root[data-theme='light'] .countin-overlay {
