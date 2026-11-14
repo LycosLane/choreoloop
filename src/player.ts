@@ -24,6 +24,19 @@ export interface PlayerCallbacks {
   onError: (message: string) => void;
 }
 
+const MIN_LOOP_SPAN = 0.5;
+const YT_SPEEDS = [0.25, 0.5, 0.75, 1.0, 1.25];
+
+function quantizeSeconds(val: number): number {
+  return Math.round(val * 100) / 100;
+}
+
+function snapYouTubeSpeed(speed: number): number {
+  return YT_SPEEDS.reduce((best, cur) =>
+    Math.abs(cur - speed) < Math.abs(best - speed) ? cur : best
+  );
+}
+
 export class ChoreoPlayer {
   private videoEl: HTMLVideoElement;
   private audioEl: HTMLAudioElement;
@@ -319,20 +332,32 @@ export class ChoreoPlayer {
   }
 
   private startCountIn(): void {
-    // Unlock HTML media element on iOS Safari within user gesture
-    const media = this.activeHtmlMedia;
-    if (media) {
-      const wasMuted = media.muted;
-      media.muted = true;
-      void media
-        .play()
-        .then(() => {
-          media.pause();
-          media.muted = wasMuted;
-        })
-        .catch(() => {
-          media.muted = wasMuted;
-        });
+    // Unlock HTML media element or YouTube iframe on iOS/Android within user gesture
+    if (this.activeKind === 'youtube' && this.ytReady && this.ytPlayer) {
+      const wasMuted = this.ytPlayer.isMuted();
+      this.ytPlayer.mute();
+      this.ytPlayer.playVideo();
+      window.setTimeout(() => {
+        if (this.countInRemaining !== null && this.ytPlayer) {
+          this.ytPlayer.pauseVideo();
+          if (!wasMuted) this.ytPlayer.unMute();
+        }
+      }, 60);
+    } else {
+      const media = this.activeHtmlMedia;
+      if (media) {
+        const wasMuted = media.muted;
+        media.muted = true;
+        void media
+          .play()
+          .then(() => {
+            media.pause();
+            media.muted = wasMuted;
+          })
+          .catch(() => {
+            media.muted = wasMuted;
+          });
+      }
     }
 
     const isBeats = this.countInMode === '4beats' || this.countInMode === '8beats';
@@ -408,7 +433,8 @@ export class ChoreoPlayer {
   }
 
   public setSpeed(newSpeed: number): void {
-    this.speed = clamp(Math.round(newSpeed * 100) / 100, 0.25, 1.25);
+    const clamped = clamp(Math.round(newSpeed * 100) / 100, 0.25, 1.25);
+    this.speed = this.activeKind === 'youtube' ? snapYouTubeSpeed(clamped) : clamped;
     if (this.activeKind === 'youtube') {
       if (this.ytReady && this.ytPlayer) {
         this.ytPlayer.setPlaybackRate(this.speed);
@@ -432,6 +458,10 @@ export class ChoreoPlayer {
   }
 
   public toggleMirror(): void {
+    if (this.activeKind === 'youtube') {
+      this.callbacks.onError('Mirror Mode is only available for local video files (YouTube ToS restriction).');
+      return;
+    }
     this.mirror = !this.mirror;
     this.applyMirror();
     this.emitState();
@@ -439,8 +469,8 @@ export class ChoreoPlayer {
   }
 
   private applyMirror(): void {
-    this.videoEl.classList.toggle('is-mirrored', this.mirror);
-    this.ytContainerEl.classList.toggle('is-mirrored', this.mirror);
+    this.videoEl.classList.toggle('is-mirrored', this.mirror && this.activeKind === 'video');
+    this.ytContainerEl.classList.remove('is-mirrored');
   }
 
   public setCountInMode(mode: CountInMode): void {
@@ -457,9 +487,9 @@ export class ChoreoPlayer {
 
   public setPointA(): void {
     if (!this.activeKind) return;
-    const t = this.getCurrentTimeInternal();
+    const t = quantizeSeconds(this.getCurrentTimeInternal());
     this.pointA = t;
-    if (this.pointB !== null && this.pointB <= this.pointA + 0.1) {
+    if (this.pointB !== null && this.pointB < this.pointA + MIN_LOOP_SPAN) {
       this.pointB = null;
       this.loopEnabled = false;
     } else if (this.pointB !== null) {
@@ -471,13 +501,13 @@ export class ChoreoPlayer {
 
   public setPointB(): void {
     if (!this.activeKind) return;
-    const t = this.getCurrentTimeInternal();
+    const t = quantizeSeconds(this.getCurrentTimeInternal());
     const dur = this.getDurationInternal();
     if (this.pointA === null) {
       this.pointA = 0;
     }
-    if (t <= this.pointA + 0.1) {
-      this.pointB = clamp(this.pointA + 0.5, 0, dur || this.pointA + 0.5);
+    if (t < this.pointA + MIN_LOOP_SPAN) {
+      this.pointB = quantizeSeconds(clamp(this.pointA + MIN_LOOP_SPAN, 0, dur || this.pointA + MIN_LOOP_SPAN));
     } else {
       this.pointB = t;
     }
@@ -489,8 +519,8 @@ export class ChoreoPlayer {
   public nudgePointA(delta: number): void {
     if (!this.activeKind || this.pointA === null) return;
     const dur = this.getDurationInternal();
-    const maxA = this.pointB !== null ? this.pointB - 0.1 : dur || this.pointA + 10;
-    this.pointA = clamp(this.pointA + delta, 0, Math.max(0, maxA));
+    const maxA = this.pointB !== null ? this.pointB - MIN_LOOP_SPAN : dur || this.pointA + 10;
+    this.pointA = quantizeSeconds(clamp(this.pointA + delta, 0, Math.max(0, maxA)));
     this.emitState();
     this.callbacks.onSettingsChanged();
   }
@@ -498,9 +528,9 @@ export class ChoreoPlayer {
   public nudgePointB(delta: number): void {
     if (!this.activeKind || this.pointB === null) return;
     const dur = this.getDurationInternal();
-    const minB = this.pointA !== null ? this.pointA + 0.1 : 0.1;
+    const minB = this.pointA !== null ? this.pointA + MIN_LOOP_SPAN : MIN_LOOP_SPAN;
     const maxB = dur || this.pointB + 10;
-    this.pointB = clamp(this.pointB + delta, minB, maxB);
+    this.pointB = quantizeSeconds(clamp(this.pointB + delta, minB, maxB));
     this.emitState();
     this.callbacks.onSettingsChanged();
   }

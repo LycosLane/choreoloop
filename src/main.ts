@@ -105,6 +105,8 @@ const libraryListEl = $<HTMLDivElement>('library-list');
 const toastEl = $<HTMLDivElement>('toast');
 
 const btnTheme = $<HTMLButtonElement>('btn-theme');
+const btnMenu = $<HTMLButtonElement>('btn-menu');
+const headerMenuEl = $<HTMLDivElement>('header-menu');
 const faviconLinkEl = document.getElementById('favicon-link') as HTMLLinkElement | null;
 const appleTouchIconEl = document.getElementById('apple-touch-icon') as HTMLLinkElement | null;
 const themeColorMetaEl = document.getElementById('theme-color-meta') as HTMLMetaElement | null;
@@ -135,7 +137,7 @@ function applyTheme(theme: AppTheme): void {
     img.src = svgIcon;
   });
 
-  btnTheme.textContent = isLight ? 'Dark' : 'Light';
+  btnTheme.textContent = isLight ? 'Switch to Dark Mode' : 'Switch to Light Mode';
   btnTheme.setAttribute('aria-label', isLight ? 'Switch to dark mode' : 'Switch to light mode');
 
   try {
@@ -224,19 +226,21 @@ function scheduleSaveTrackSettings(): void {
 
 function renderPlayerState(snap: PlayerStateSnapshot): void {
   const hasMedia = snap.mediaKind !== null;
-  const hasVisualStage = snap.mediaKind === 'video' || snap.mediaKind === 'youtube';
+  const isLocalVideo = snap.mediaKind === 'video';
+  const isYouTube = snap.mediaKind === 'youtube';
 
   // Stage visibility
   stageEmptyEl.classList.toggle('hidden', hasMedia);
-  stageVideoWrap.classList.toggle('hidden', snap.mediaKind !== 'video');
-  stageYtWrap.classList.toggle('hidden', snap.mediaKind !== 'youtube');
+  stageVideoWrap.classList.toggle('hidden', !isLocalVideo);
+  stageYtWrap.classList.toggle('hidden', !isYouTube);
   stageAudioWrap.classList.toggle('hidden', snap.mediaKind !== 'audio');
-  btnFullscreen.classList.toggle('hidden', !hasVisualStage);
-  if (!hasVisualStage && isStageFullscreen) {
+  // Keep overlays off the YouTube iframe to comply with YouTube API ToS
+  btnFullscreen.classList.toggle('hidden', !isLocalVideo);
+  if (!isLocalVideo && isStageFullscreen) {
     setStageFullscreen(false);
   }
 
-  // Count-In overlay
+  // Count-In overlay (only over local stage; YouTube uses native player without overlays)
   if (snap.countInRemaining !== null) {
     countInOverlay.classList.remove('hidden');
     const isBeats = snap.countInMode === '4beats' || snap.countInMode === '8beats';
@@ -260,11 +264,12 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
     audioLoopStatusEl.textContent = snap.isPlaying ? 'Playing' : 'Paused';
   }
 
-  // Mirror mode
-  btnMirror.classList.toggle('is-active', snap.mirror);
-  btnMirror.setAttribute('aria-pressed', String(snap.mirror));
-  btnMirror.textContent = snap.mirror ? 'Mirror: On' : 'Mirror: Off';
-  mirrorBadgeEl.classList.toggle('hidden', !snap.mirror || !hasVisualStage);
+  // Mirror mode (local video only)
+  btnMirror.disabled = isYouTube;
+  btnMirror.classList.toggle('is-active', snap.mirror && !isYouTube);
+  btnMirror.setAttribute('aria-pressed', String(snap.mirror && !isYouTube));
+  btnMirror.textContent = isYouTube ? 'Mirror: Local Only' : snap.mirror ? 'Mirror: On' : 'Mirror: Off';
+  mirrorBadgeEl.classList.toggle('hidden', !snap.mirror || !isLocalVideo);
 
   // Count-in chips & BPM row
   for (const btn of countInButtons) {
@@ -628,13 +633,35 @@ scrubberEl.addEventListener('pointercancel', () => {
   isScrubbing = false;
 });
 
+function closeHeaderMenu(): void {
+  headerMenuEl.classList.add('hidden');
+  btnMenu.setAttribute('aria-expanded', 'false');
+}
+
+btnMenu.addEventListener('click', (e) => {
+  e.stopPropagation();
+  const isOpen = !headerMenuEl.classList.contains('hidden');
+  headerMenuEl.classList.toggle('hidden', isOpen);
+  btnMenu.setAttribute('aria-expanded', String(!isOpen));
+});
+
+document.addEventListener('click', (e) => {
+  if (!headerMenuEl.classList.contains('hidden') && !headerMenuEl.contains(e.target as Node) && e.target !== btnMenu) {
+    closeHeaderMenu();
+  }
+});
+
 // Event Listeners
 btnTheme.addEventListener('click', () => {
   const current = document.documentElement.dataset.theme === 'light' ? 'light' : 'dark';
   applyTheme(current === 'light' ? 'dark' : 'light');
+  closeHeaderMenu();
 });
 
-const triggerImport = () => fileInput.click();
+const triggerImport = () => {
+  closeHeaderMenu();
+  fileInput.click();
+};
 $('btn-import-top').addEventListener('click', triggerImport);
 $('btn-import-empty').addEventListener('click', triggerImport);
 $('btn-import-modal').addEventListener('click', triggerImport);
@@ -642,7 +669,10 @@ fileInput.addEventListener('change', () => {
   void handleFilesImported(fileInput.files);
 });
 
-$('btn-yt-top').addEventListener('click', openYtModal);
+$('btn-yt-top').addEventListener('click', () => {
+  closeHeaderMenu();
+  openYtModal();
+});
 $('btn-yt-empty').addEventListener('click', openYtModal);
 $('btn-close-yt').addEventListener('click', closeYtModal);
 ytModal.addEventListener('click', (e) => {
@@ -795,6 +825,9 @@ async function init(): Promise<void> {
   initTheme();
   initNudgeStep();
   renderPlayerState(player.getSnapshot());
+  if (navigator.storage?.persist) {
+    void navigator.storage.persist().catch(() => {});
+  }
   await refreshTrackList();
 
   const handledShared = await checkIncomingSharedLink();

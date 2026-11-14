@@ -1,4 +1,4 @@
-const CACHE_NAME = 'choreoloop-v2';
+const CACHE_NAME = 'choreoloop-v3';
 
 const PRECACHE_URLS = [
   './',
@@ -8,8 +8,10 @@ const PRECACHE_URLS = [
   './icons/choreoloop-light.svg',
   './icons/icon-192.png',
   './icons/icon-512.png',
+  './icons/icon-maskable-512.png',
   './icons/apple-touch-icon.png',
   './icons/apple-touch-icon-light.png',
+  /* __VITE_ASSETS__ */
 ];
 
 self.addEventListener('install', (event) => {

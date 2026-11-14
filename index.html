@@ -13,7 +13,8 @@
     />
     <meta id="theme-color-meta" name="theme-color" content="#101216" />
 
-    <!-- iOS Home Screen PWA support -->
+    <!-- iOS & Android Home Screen PWA support -->
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="ChoreoLoop" />
@@ -34,18 +35,32 @@
           </div>
         </div>
         <div class="top-actions">
-          <button id="btn-theme" class="btn-pill btn-surface" type="button" aria-label="Switch theme">
-            Light
-          </button>
-          <button id="btn-yt-top" class="btn-pill btn-surface" type="button" aria-label="Add YouTube link">
-            + YT
-          </button>
-          <button id="btn-import-top" class="btn-pill btn-accent" type="button" aria-label="Import media">
-            + File
-          </button>
           <button id="btn-library" class="btn-pill btn-surface" type="button" aria-label="Open library">
             Library <span id="library-count" class="badge">0</span>
           </button>
+          <div class="menu-wrap">
+            <button
+              id="btn-menu"
+              class="btn-pill btn-accent btn-menu-dots"
+              type="button"
+              aria-haspopup="true"
+              aria-expanded="false"
+              aria-label="Open menu"
+            >
+              &#8942;
+            </button>
+            <div id="header-menu" class="header-menu hidden" role="menu">
+              <button id="btn-import-top" class="menu-item" type="button" role="menuitem">
+                + Import File
+              </button>
+              <button id="btn-yt-top" class="menu-item" type="button" role="menuitem">
+                + YouTube Link
+              </button>
+              <button id="btn-theme" class="menu-item" type="button" role="menuitem">
+                Switch to Light Mode
+              </button>
+            </div>
+          </div>
         </div>
       </header>
 
