@@ -1,4 +1,5 @@
 {
+  "id": "./",
   "name": "ChoreoLoop",
   "short_name": "ChoreoLoop",
   "description": "Offline-first A-B loop, slow-motion, and mirror studio for dancers.",

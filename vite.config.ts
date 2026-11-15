@@ -17,8 +17,15 @@ function injectSwAssetsPlugin(): Plugin {
         .map((f) => `  './assets/${f}',`)
         .join('\n');
 
-      const swContent = fs.readFileSync(swPath, 'utf8');
-      fs.writeFileSync(swPath, swContent.replace('/* __VITE_ASSETS__ */', assetLines), 'utf8');
+      const pkgPath = path.resolve(__dirname, 'package.json');
+      const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8')) as { version?: string };
+      const cacheVersion = `${pkg.version ?? '0.0.0'}-${Date.now().toString(36)}`;
+
+      const swContent = fs
+        .readFileSync(swPath, 'utf8')
+        .replace('__CACHE_VERSION__', cacheVersion)
+        .replace('/* __VITE_ASSETS__ */', assetLines);
+      fs.writeFileSync(swPath, swContent, 'utf8');
     },
   };
 }

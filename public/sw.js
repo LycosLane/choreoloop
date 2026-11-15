@@ -1,7 +1,6 @@
-const CACHE_NAME = 'choreoloop-v4';
+const CACHE_NAME = 'choreoloop-v__CACHE_VERSION__';
 
 const PRECACHE_URLS = [
-  './',
   './index.html',
   './manifest.json',
   './manifest-light.json',
@@ -55,7 +54,7 @@ self.addEventListener('fetch', (event) => {
           }
           return response;
         })
-        .catch(() => caches.match('./index.html').then((res) => res || caches.match('./')))
+        .catch(() => caches.match('./index.html'))
     );
     return;
   }

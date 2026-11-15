@@ -13,7 +13,12 @@ import {
   updateTrackMeta,
 } from './db';
 import { ChoreoPlayer, type PlayerStateSnapshot } from './player';
+import { createMediaSessionSync } from './services/media-session';
+import { createTapTempo } from './services/tap-tempo';
+import { createWakeLockController } from './services/wake-lock';
 import type { CountInMode, CountInTone, LoopBookmark, TrackMetadata } from './types';
+import { renderLibraryDrawer } from './ui/library-drawer';
+import { initVideoGestures } from './ui/video-gesture';
 import { clamp, formatBytes, formatTime, generateId } from './utils';
 import { extractYouTubeId } from './youtube';
 
@@ -458,8 +463,8 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
 
   renderTimeline(snap.currentTime, snap.duration);
   renderBookmarks();
-  syncWakeLock(hasMedia);
-  syncMediaSession(snap);
+  wakeLock.sync(hasMedia);
+  mediaSession.sync(snap, activeTrack?.name ?? null);
 }
 
 function renderTimeline(currentTime: number, duration: number): void {
@@ -547,90 +552,24 @@ function renderBookmarks(): void {
   }
 }
 
-async function updateStorageReadout(): Promise<void> {
-  const cachedBytes = tracks
-    .filter((t) => t.mediaKind !== 'youtube' && t.hasOfflineCopy !== false)
-    .reduce((sum, t) => sum + (t.size || 0), 0);
-  const streamCount = tracks.filter((t) => t.mediaKind !== 'youtube' && t.hasOfflineCopy === false).length;
-
-  let quotaPart = '';
-  try {
-    if (navigator.storage?.estimate) {
-      const est = await navigator.storage.estimate();
-      if (typeof est.quota === 'number' && est.quota > 0) {
-        quotaPart = ` of ${formatBytes(est.quota)} quota`;
-      }
-    }
-  } catch {
-    // Ignore estimate errors
-  }
-
-  const streamPart = streamCount > 0 ? ` · ${streamCount} stream-only` : '';
-  libraryStorageEl.textContent = `Offline cache: ${formatBytes(cachedBytes)}${quotaPart}${streamPart}`;
-}
-
 function renderLibrary(): void {
-  libraryCountEl.textContent = String(tracks.length);
-  btnClearLibrary.disabled = tracks.length === 0;
-  if (tracks.length === 0) {
-    libraryConfirmEl.classList.add('hidden');
-  }
-  void updateStorageReadout();
-  libraryListEl.innerHTML = '';
-
-  if (tracks.length === 0) {
-    const empty = document.createElement('p');
-    empty.className = 'empty-hint';
-    empty.textContent = 'No tracks yet. Tap "+ File" or "+ YouTube" to add audio, video, or YouTube.';
-    libraryListEl.appendChild(empty);
-    return;
-  }
-
-  for (const track of tracks) {
-    const row = document.createElement('div');
-    row.className = `library-item${activeTrack?.id === track.id ? ' is-active' : ''}`;
-
-    const mainBtn = document.createElement('button');
-    mainBtn.type = 'button';
-    mainBtn.className = 'library-item-main';
-    const kindLabel =
-      track.mediaKind === 'youtube' ? 'YOUTUBE' : track.mediaKind === 'video' ? 'VIDEO' : 'AUDIO';
-    const durLabel = track.duration > 0 ? formatTime(track.duration, false) : '--:--';
-    let sizeOrNet = 'Online';
-    if (track.mediaKind !== 'youtube') {
-      if (track.hasOfflineCopy === false) {
-        const isLoaded = sessionFiles.has(track.id);
-        sizeOrNet = `${formatBytes(track.size)} · ${isLoaded ? 'Stream' : 'Re-select file'}`;
-      } else {
-        sizeOrNet = formatBytes(track.size);
-      }
-    }
-    const bmCount = track.bookmarks.length;
-    const titleSpan = document.createElement('span');
-    titleSpan.className = 'library-item-title';
-    titleSpan.textContent = track.name;
-    const metaSpan = document.createElement('span');
-    metaSpan.className = 'library-item-meta';
-    metaSpan.textContent = `${kindLabel} · ${durLabel} · ${sizeOrNet} · ${bmCount} loop${bmCount === 1 ? '' : 's'}`;
-    mainBtn.append(titleSpan, metaSpan);
-    mainBtn.addEventListener('click', () => {
-      void selectTrack(track.id);
+  renderLibraryDrawer({
+    tracks,
+    activeTrackId: activeTrack?.id ?? null,
+    sessionFiles,
+    libraryCountEl,
+    libraryListEl,
+    libraryStorageEl,
+    libraryConfirmEl,
+    btnClearLibrary,
+    onSelectTrack: (trackId) => {
+      void selectTrack(trackId);
       closeLibraryModal();
-    });
-
-    const delBtn = document.createElement('button');
-    delBtn.type = 'button';
-    delBtn.className = 'library-item-delete';
-    delBtn.setAttribute('aria-label', `Remove ${track.name} from ChoreoLoop library`);
-    delBtn.textContent = 'Remove';
-    delBtn.addEventListener('click', () => {
-      void handleDeleteTrack(track.id);
-    });
-
-    row.appendChild(mainBtn);
-    row.appendChild(delBtn);
-    libraryListEl.appendChild(row);
-  }
+    },
+    onDeleteTrack: (trackId) => {
+      void handleDeleteTrack(trackId);
+    },
+  });
 }
 
 async function refreshTrackList(): Promise<void> {
@@ -812,78 +751,16 @@ async function removeBookmark(bookmarkId: string): Promise<void> {
   renderBookmarks();
 }
 
-// Screen Wake Lock
-let wakeLockSentinel: WakeLockSentinel | null = null;
-let wakeLockWanted = false;
-
-async function acquireWakeLock(): Promise<void> {
-  if (!wakeLockWanted || document.visibilityState !== 'visible') return;
-  if (!('wakeLock' in navigator) || wakeLockSentinel) return;
-  try {
-    wakeLockSentinel = await navigator.wakeLock.request('screen');
-    wakeLockSentinel.addEventListener('release', () => {
-      wakeLockSentinel = null;
-    });
-  } catch {
-    // Ignore wake lock rejection (e.g. low battery mode)
-  }
-}
-
-function syncWakeLock(active: boolean): void {
-  wakeLockWanted = active;
-  if (active) {
-    void acquireWakeLock();
-  } else if (wakeLockSentinel) {
-    void wakeLockSentinel.release().catch(() => {});
-    wakeLockSentinel = null;
-  }
-}
-
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && wakeLockWanted) {
-    void acquireWakeLock();
-  }
+// Screen Wake Lock & MediaSession
+const wakeLock = createWakeLockController();
+const mediaSession = createMediaSessionSync({
+  onTogglePlay: () => player.togglePlay(),
+  onSeekBy: (delta) => player.seekBy(delta),
+  onRestartA: () => {
+    const s = player.getSnapshot();
+    player.seekTo(s.pointA ?? 0);
+  },
 });
-
-// MediaSession (Bluetooth headphones / Apple Watch / clicker)
-let mediaSessionBound = false;
-function syncMediaSession(snap: PlayerStateSnapshot): void {
-  if (!('mediaSession' in navigator)) return;
-  if (!mediaSessionBound) {
-    mediaSessionBound = true;
-    const ms = navigator.mediaSession;
-    try {
-      ms.setActionHandler('play', () => player.togglePlay());
-      ms.setActionHandler('pause', () => player.togglePlay());
-      ms.setActionHandler('seekbackward', () => player.seekBy(-5));
-      ms.setActionHandler('seekforward', () => player.seekBy(5));
-      ms.setActionHandler('previoustrack', () => {
-        const s = player.getSnapshot();
-        player.seekTo(s.pointA ?? 0);
-      });
-    } catch {
-      // Ignore unsupported actions
-    }
-  }
-  if (activeTrack) {
-    navigator.mediaSession.metadata = new MediaMetadata({
-      title: activeTrack.name,
-      artist: 'ChoreoLoop',
-    });
-  }
-  navigator.mediaSession.playbackState = snap.isPlaying ? 'playing' : snap.mediaKind ? 'paused' : 'none';
-  if (snap.duration > 0 && navigator.mediaSession.setPositionState) {
-    try {
-      navigator.mediaSession.setPositionState({
-        duration: snap.duration,
-        playbackRate: snap.speed,
-        position: clamp(snap.currentTime, 0, snap.duration),
-      });
-    } catch {
-      // Ignore invalid state
-    }
-  }
-}
 
 // Fullscreen Stage + Auto-Hide HUD
 let fsHudTimer: number | null = null;
@@ -914,116 +791,17 @@ function setStageFullscreen(active: boolean): void {
 }
 
 // Pinch-to-Zoom & Pan on Video Stage
-let videoZoom = 1;
-let videoPanX = 0;
-let videoPanY = 0;
-
-function applyVideoTransform(isGesturing = false): void {
-  videoEl.classList.toggle('is-gesturing', isGesturing);
-  videoEl.style.setProperty('--zoom', String(videoZoom));
-  videoEl.style.setProperty('--pan-x', `${videoPanX.toFixed(1)}px`);
-  videoEl.style.setProperty('--pan-y', `${videoPanY.toFixed(1)}px`);
-  const zoomed = videoZoom > 1.02;
-  btnZoomReset.classList.toggle('hidden', !zoomed);
-  if (zoomed) {
-    btnZoomReset.textContent = `${videoZoom.toFixed(1)}x Reset`;
-  }
-}
-
-function resetVideoZoom(): void {
-  videoZoom = 1;
-  videoPanX = 0;
-  videoPanY = 0;
-  applyVideoTransform(false);
-}
-
-btnZoomReset.addEventListener('click', (e) => {
-  e.stopPropagation();
-  resetVideoZoom();
-});
-videoEl.addEventListener('loadedmetadata', () => resetVideoZoom());
-
-const activePointers = new Map<number, { x: number; y: number }>();
-let pinchStartDist = 0;
-let pinchStartZoom = 1;
-let panStartX = 0;
-let panStartY = 0;
-let panOriginX = 0;
-let panOriginY = 0;
-let gestureMoved = false;
-
-function getPointerDistance(): number {
-  const pts = Array.from(activePointers.values());
-  if (pts.length < 2) return 0;
-  return Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-}
-
-stageVideoWrap.addEventListener('pointerdown', (e) => {
-  if (e.target === btnZoomReset || e.target === btnFullscreen) return;
-  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  gestureMoved = false;
-  if (activePointers.size === 1) {
-    panStartX = e.clientX;
-    panStartY = e.clientY;
-    panOriginX = videoPanX;
-    panOriginY = videoPanY;
-  } else if (activePointers.size === 2) {
-    pinchStartDist = getPointerDistance();
-    pinchStartZoom = videoZoom;
-  }
-});
-
-stageVideoWrap.addEventListener('pointermove', (e) => {
-  if (!activePointers.has(e.pointerId)) return;
-  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-  if (activePointers.size === 2 && pinchStartDist > 10) {
-    gestureMoved = true;
-    const dist = getPointerDistance();
-    videoZoom = clamp(pinchStartZoom * (dist / pinchStartDist), 1, 3);
-    if (videoZoom <= 1.02) {
-      videoZoom = 1;
-      videoPanX = 0;
-      videoPanY = 0;
-    }
-    applyVideoTransform(true);
-  } else if (activePointers.size === 1 && videoZoom > 1.02) {
-    const dx = e.clientX - panStartX;
-    const dy = e.clientY - panStartY;
-    if (Math.hypot(dx, dy) > 4) gestureMoved = true;
-    const maxPanX = (stageVideoWrap.clientWidth * (videoZoom - 1)) / 2;
-    const maxPanY = (stageVideoWrap.clientHeight * (videoZoom - 1)) / 2;
-    videoPanX = clamp(panOriginX + dx, -maxPanX, maxPanX);
-    videoPanY = clamp(panOriginY + dy, -maxPanY, maxPanY);
-    applyVideoTransform(true);
-  }
-});
-
-const handleVideoPointerEnd = (e: PointerEvent) => {
-  const wasSingleTap = activePointers.size === 1 && !gestureMoved;
-  activePointers.delete(e.pointerId);
-  if (activePointers.size === 1) {
-    const remaining = Array.from(activePointers.values())[0];
-    panStartX = remaining.x;
-    panStartY = remaining.y;
-    panOriginX = videoPanX;
-    panOriginY = videoPanY;
-  }
-  applyVideoTransform(false);
-
-  if (wasSingleTap && e.target === videoEl) {
+initVideoGestures({
+  stageVideoWrap,
+  videoEl,
+  btnZoomReset,
+  btnFullscreen,
+  onSingleTap: () => {
+    player.togglePlay();
     if (isStageFullscreen) {
-      player.togglePlay();
       showFsHudTemporarily();
-    } else {
-      player.togglePlay();
     }
-  }
-};
-
-stageVideoWrap.addEventListener('pointerup', handleVideoPointerEnd);
-stageVideoWrap.addEventListener('pointercancel', (e) => {
-  activePointers.delete(e.pointerId);
-  applyVideoTransform(false);
+  },
 });
 
 function syncModalScrollLock(): void {
@@ -1329,32 +1107,18 @@ btnLoopCountIn.addEventListener('click', () => {
   player.toggleRepeatCountInOnLoop();
 });
 
-let tapTimes: number[] = [];
+const tapTempo = createTapTempo();
 let tapResetTimer: number | null = null;
 btnTapBpm.addEventListener('click', () => {
-  const now = performance.now();
-  if (tapTimes.length > 0 && now - tapTimes[tapTimes.length - 1] > 2200) {
-    tapTimes = [];
-  }
-  tapTimes.push(now);
-  if (tapTimes.length > 6) {
-    tapTimes.shift();
-  }
   btnTapBpm.classList.add('is-tapping');
   if (tapResetTimer !== null) window.clearTimeout(tapResetTimer);
   tapResetTimer = window.setTimeout(() => {
     btnTapBpm.classList.remove('is-tapping');
   }, 220);
 
-  if (tapTimes.length >= 2) {
-    let totalDiff = 0;
-    for (let i = 1; i < tapTimes.length; i += 1) {
-      totalDiff += tapTimes[i] - tapTimes[i - 1];
-    }
-    const avgMs = totalDiff / (tapTimes.length - 1);
-    if (avgMs > 0) {
-      player.setBpm(Math.round(60000 / avgMs));
-    }
+  const bpm = tapTempo.tap();
+  if (bpm !== null) {
+    player.setBpm(bpm);
   }
 });
 
@@ -1495,8 +1259,8 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-// Service Worker Registration
-if ('serviceWorker' in navigator) {
+// Service Worker Registration (production builds only so Vite HMR stays clean)
+if ('serviceWorker' in navigator && !import.meta.env.DEV) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./sw.js').catch((err) => {
       console.warn('Service worker registration failed:', err);

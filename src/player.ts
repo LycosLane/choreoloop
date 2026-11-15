@@ -59,6 +59,8 @@ export class ChoreoPlayer {
   private ytLoadSeq = 0;
   private ytCountInResumeTime: number | null = null;
   private ytWasMutedBeforeCountIn = false;
+  private isLoopSeeking = false;
+  private loopSeekUntilMs = 0;
 
   private speed = 1.0;
   private mirror = false;
@@ -251,6 +253,7 @@ export class ChoreoPlayer {
   private cleanupActiveMedia(): void {
     this.cancelCountIn();
     this.stopLoopMonitor();
+    this.isLoopSeeking = false;
 
     this.videoEl.pause();
     this.audioEl.pause();
@@ -366,15 +369,21 @@ export class ChoreoPlayer {
   }
 
   private startCountIn(): void {
+    const cur = this.getCurrentTimeInternal();
+    const shouldStartAtA =
+      this.loopEnabled &&
+      this.pointA !== null &&
+      this.pointB !== null &&
+      this.pointB > this.pointA &&
+      (cur < this.pointA || cur >= this.pointB);
+    if (shouldStartAtA && this.pointA !== null) {
+      // Cue the starting frame immediately so the dancer sees Point A during the countdown
+      this.seekInternal(this.pointA);
+      this.emitTime();
+    }
+
     // Unlock HTML media element or YouTube iframe on iOS/Android within user gesture
     if (this.activeKind === 'youtube' && this.ytReady && this.ytPlayer) {
-      const cur = this.getCurrentTimeInternal();
-      const shouldStartAtA =
-        this.loopEnabled &&
-        this.pointA !== null &&
-        this.pointB !== null &&
-        this.pointB > this.pointA &&
-        (cur < this.pointA || cur >= this.pointB);
       this.ytCountInResumeTime = shouldStartAtA && this.pointA !== null ? this.pointA : cur;
       this.ytWasMutedBeforeCountIn = this.ytPlayer.isMuted();
       // Keep YouTube iframe playing muted during count-in so mobile browsers preserve the user gesture unlock
@@ -666,9 +675,22 @@ export class ChoreoPlayer {
       this.pointB === null ||
       this.pointB <= this.pointA
     ) {
+      this.isLoopSeeking = false;
       return;
     }
-    if (this.getCurrentTimeInternal() >= this.pointB) {
+
+    const cur = this.getCurrentTimeInternal();
+    if (this.isLoopSeeking) {
+      if (cur < this.pointB - 0.15 || performance.now() >= this.loopSeekUntilMs) {
+        this.isLoopSeeking = false;
+      } else {
+        return;
+      }
+    }
+
+    if (cur >= this.pointB) {
+      this.isLoopSeeking = true;
+      this.loopSeekUntilMs = performance.now() + 350;
       this.seekInternal(this.pointA);
       if (this.countInEnabled && this.repeatCountInOnLoop && this.countInRemaining === null) {
         this.pauseNow();
