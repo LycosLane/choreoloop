@@ -12,3 +12,7 @@ npm-debug.log*
 .env.*
 .vscode/
 .idea/
+
+# Local documentation & private guides (never pushed)
+.local_docs/
+BRANDING.md
