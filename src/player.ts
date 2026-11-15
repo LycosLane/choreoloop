@@ -58,6 +58,8 @@ export class ChoreoPlayer {
   private countInTimerId: number | null = null;
   private ytPlayVerifyTimerId: number | null = null;
   private ytLoadSeq = 0;
+  private ytPreCountInVolume: number | null = null;
+  private ytCountInHoldTime: number | null = null;
   private isLoopSeeking = false;
   private loopSeekUntilMs = 0;
 
@@ -281,6 +283,8 @@ export class ChoreoPlayer {
     this.ytContainerEl.innerHTML = '';
     this.ytReady = false;
     this.ytPlaying = false;
+    this.ytPreCountInVolume = null;
+    this.ytCountInHoldTime = null;
     this.activeKind = null;
   }
 
@@ -324,6 +328,9 @@ export class ChoreoPlayer {
 
   private getCurrentTimeInternal(): number {
     if (this.activeKind === 'youtube') {
+      if (this.countInRemaining !== null && this.ytCountInHoldTime !== null) {
+        return this.ytCountInHoldTime;
+      }
       return this.ytReady && this.ytPlayer ? this.ytPlayer.getCurrentTime() : 0;
     }
     return this.activeHtmlMedia?.currentTime ?? 0;
@@ -355,6 +362,15 @@ export class ChoreoPlayer {
           'YouTube player is still loading (or blocked by browser Shields).'
         );
         return;
+      }
+      if (this.ytCountInHoldTime !== null) {
+        const targetTime = this.ytCountInHoldTime;
+        this.ytCountInHoldTime = null;
+        this.ytPlayer.seekTo(targetTime, true);
+      }
+      if (this.ytPreCountInVolume !== null) {
+        this.ytPlayer.setVolume(this.ytPreCountInVolume);
+        this.ytPreCountInVolume = null;
       }
       this.ytPlayer.playVideo();
       this.ytPlayer.setPlaybackRate(this.speed);
@@ -391,19 +407,6 @@ export class ChoreoPlayer {
   }
 
   private startCountIn(): void {
-    if (this.activeKind === 'youtube') {
-      if (!this.ytReady || !this.ytPlayer) {
-        this.callbacks.onError(
-          'YouTube player is still loading (or blocked by browser Shields).'
-        );
-        return;
-      }
-      this.clearYtPlayVerifyTimer();
-      this.ytPlaying = false;
-      this.stopLoopMonitor();
-      this.ytPlayer.pauseVideo();
-    }
-
     const cur = this.getCurrentTimeInternal();
     const shouldStartAtA =
       this.loopEnabled &&
@@ -417,20 +420,36 @@ export class ChoreoPlayer {
       this.emitTime();
     }
 
-    // Unlock HTML media element on iOS/Android within user gesture
-    if (this.activeKind !== 'youtube') {
+    if (this.activeKind === 'youtube') {
+      if (!this.ytReady || !this.ytPlayer) {
+        this.callbacks.onError(
+          'YouTube player is still loading (or blocked by browser Shields).'
+        );
+        return;
+      }
+      this.clearYtPlayVerifyTimer();
+      this.stopLoopMonitor();
+      if (this.ytPreCountInVolume === null) {
+        this.ytPreCountInVolume = this.ytPlayer.getVolume();
+      }
+      this.ytCountInHoldTime = shouldStartAtA && this.pointA !== null ? this.pointA : cur;
+      // Keep YouTube playing at volume 0 during count-in so Brave/mobile browsers do not block playback after the timer
+      this.ytPlayer.setVolume(0);
+      this.ytPlayer.playVideo();
+    } else {
+      // Unlock HTML media element with volume=0 (audible permission, not muted=true) within user gesture
       const media = this.activeHtmlMedia;
       if (media) {
-        const wasMuted = media.muted;
-        media.muted = true;
+        const prevVolume = media.volume;
+        media.volume = 0;
         void media
           .play()
           .then(() => {
             media.pause();
-            media.muted = wasMuted;
+            media.volume = prevVolume;
           })
           .catch(() => {
-            media.muted = wasMuted;
+            media.volume = prevVolume;
           });
       }
     }
@@ -477,6 +496,14 @@ export class ChoreoPlayer {
     this.countInRemaining = null;
     if (this.activeKind === 'youtube' && this.ytPlayer) {
       this.ytPlayer.pauseVideo();
+      if (this.ytPreCountInVolume !== null) {
+        this.ytPlayer.setVolume(this.ytPreCountInVolume);
+        this.ytPreCountInVolume = null;
+      }
+      if (this.ytCountInHoldTime !== null) {
+        this.ytPlayer.seekTo(this.ytCountInHoldTime, true);
+        this.ytCountInHoldTime = null;
+      }
       this.ytPlaying = false;
     }
     this.emitState();
@@ -698,6 +725,7 @@ export class ChoreoPlayer {
   }
 
   private checkABLoop(): void {
+    if (this.countInRemaining !== null) return;
     if (
       !this.loopEnabled ||
       this.pointA === null ||
@@ -722,7 +750,9 @@ export class ChoreoPlayer {
       this.loopSeekUntilMs = performance.now() + 350;
       this.seekInternal(this.pointA);
       if (this.countInEnabled && this.repeatCountInOnLoop && this.countInRemaining === null) {
-        this.pauseNow();
+        if (this.activeKind !== 'youtube') {
+          this.pauseNow();
+        }
         this.stopLoopMonitor();
         this.startCountIn();
       }

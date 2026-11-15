@@ -1,6 +1,6 @@
 {
   "name": "choreoloop",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "private": true,
   "description": "Mobile-first offline PWA for dancers with A-B looping, slow-motion speed control, video mirror mode, and count-in timer.",
   "type": "module",

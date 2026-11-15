@@ -9,6 +9,8 @@ export interface YTPlayerInstance {
   mute(): void;
   unMute(): void;
   isMuted(): boolean;
+  setVolume(volume: number): void;
+  getVolume(): number;
   destroy(): void;
 }
 
