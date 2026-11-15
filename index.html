@@ -161,6 +161,11 @@
 
         <!-- Timeline & A-B Scrubber -->
         <section class="timeline-card" aria-label="Playback timeline">
+          <div id="yt-countin-bar" class="yt-countin-bar hidden" role="status" aria-live="assertive">
+            <span id="yt-countin-label" class="yt-countin-label">GET READY</span>
+            <span id="yt-countin-number" class="yt-countin-number">3</span>
+            <button id="btn-yt-cancel-countin" class="btn-mini btn-surface" type="button">Cancel</button>
+          </div>
           <div class="time-row">
             <span id="time-current" class="time-mono">00:00.0</span>
             <span id="loop-span-readout" class="loop-span-readout"></span>

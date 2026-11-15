@@ -61,6 +61,45 @@ export function generateId(): string {
 import type { CountInTone } from './types';
 
 let audioCtx: AudioContext | null = null;
+let noiseBuffer: AudioBuffer | null = null;
+
+function getNoiseBuffer(ctx: AudioContext): AudioBuffer {
+  if (noiseBuffer && noiseBuffer.sampleRate === ctx.sampleRate) {
+    return noiseBuffer;
+  }
+  const len = Math.floor(ctx.sampleRate * 0.05);
+  const buf = ctx.createBuffer(1, len, ctx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < len; i += 1) {
+    data[i] = Math.random() * 2 - 1;
+  }
+  noiseBuffer = buf;
+  return buf;
+}
+
+function triggerNoiseBurst(
+  ctx: AudioContext,
+  now: number,
+  freq: number,
+  q: number,
+  duration: number,
+  level: number
+): void {
+  const src = ctx.createBufferSource();
+  src.buffer = getNoiseBuffer(ctx);
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'bandpass';
+  filter.frequency.setValueAtTime(freq, now);
+  filter.Q.setValueAtTime(q, now);
+  const g = ctx.createGain();
+  g.gain.setValueAtTime(level, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + duration);
+  src.connect(filter);
+  filter.connect(g);
+  g.connect(ctx.destination);
+  src.start(now);
+  src.stop(now + duration + 0.005);
+}
 
 export function playCountInTone(
   isGoTone: boolean,
@@ -80,40 +119,60 @@ export function playCountInTone(
     if (audioCtx.state === 'suspended') {
       void audioCtx.resume();
     }
-    const now = audioCtx.currentTime;
-    const osc = audioCtx.createOscillator();
-    const gain = audioCtx.createGain();
+    const ctx = audioCtx;
+    const now = ctx.currentTime;
     const peak = clampedVol * 0.85;
 
     if (tone === 'woodblock') {
-      osc.type = 'triangle';
-      const startFreq = isGoTone ? 1180 : 780;
-      osc.frequency.setValueAtTime(startFreq, now);
-      osc.frequency.exponentialRampToValueAtTime(startFreq * 0.72, now + 0.055);
-      gain.gain.setValueAtTime(peak, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + (isGoTone ? 0.11 : 0.065));
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start(now);
-      osc.stop(now + (isGoTone ? 0.12 : 0.07));
+      // Resonant dual-partial clave / studio woodblock + crisp transient
+      const base = isGoTone ? 1160 : 810;
+      const ratios = [1, 1.48];
+      ratios.forEach((ratio, idx) => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = idx === 0 ? 'triangle' : 'sine';
+        osc.frequency.setValueAtTime(base * ratio * 1.06, now);
+        osc.frequency.exponentialRampToValueAtTime(base * ratio, now + 0.018);
+        const partLevel = idx === 0 ? peak * 0.8 : peak * 0.42;
+        const dur = isGoTone ? 0.095 : 0.065;
+        g.gain.setValueAtTime(partLevel, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + dur + 0.01);
+      });
+      triggerNoiseBurst(ctx, now, base * 2.2, 3.5, 0.014, peak * 0.35);
     } else if (tone === 'click') {
-      osc.type = 'square';
-      osc.frequency.setValueAtTime(isGoTone ? 1650 : 1120, now);
-      gain.gain.setValueAtTime(peak * 0.65, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + (isGoTone ? 0.06 : 0.035));
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start(now);
-      osc.stop(now + (isGoTone ? 0.065 : 0.04));
+      // Tight DAW rimshot / metronome click
+      const bodyOsc = ctx.createOscillator();
+      const bodyGain = ctx.createGain();
+      bodyOsc.type = 'sine';
+      bodyOsc.frequency.setValueAtTime(isGoTone ? 1680 : 1220, now);
+      bodyOsc.frequency.exponentialRampToValueAtTime(isGoTone ? 540 : 410, now + 0.025);
+      bodyGain.gain.setValueAtTime(peak * 0.78, now);
+      bodyGain.gain.exponentialRampToValueAtTime(0.001, now + 0.032);
+      bodyOsc.connect(bodyGain);
+      bodyGain.connect(ctx.destination);
+      bodyOsc.start(now);
+      bodyOsc.stop(now + 0.038);
+      triggerNoiseBurst(ctx, now, isGoTone ? 3400 : 2600, 2.2, 0.018, peak * 0.55);
     } else {
-      osc.type = 'sine';
-      osc.frequency.setValueAtTime(isGoTone ? 920 : 580, now);
-      gain.gain.setValueAtTime(peak * 0.75, now);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + (isGoTone ? 0.15 : 0.09));
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start(now);
-      osc.stop(now + (isGoTone ? 0.16 : 0.1));
+      // Warm harmonic studio bell (fundamental + fifth)
+      const root = isGoTone ? 880 : 587.33;
+      [1, 1.5].forEach((ratio, idx) => {
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(root * ratio, now);
+        const dur = isGoTone ? 0.16 : 0.1;
+        g.gain.setValueAtTime(idx === 0 ? peak * 0.7 : peak * 0.25, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + dur);
+        osc.connect(g);
+        g.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + dur + 0.01);
+      });
     }
   } catch {
     // Ignore audio context restrictions

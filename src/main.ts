@@ -54,6 +54,10 @@ const countInOverlay = $<HTMLDivElement>('countin-overlay');
 const countInLabelEl = $<HTMLSpanElement>('countin-label');
 const countInNumberEl = $<HTMLSpanElement>('countin-number');
 const btnCancelCountIn = $<HTMLButtonElement>('btn-cancel-countin');
+const ytCountInBarEl = $<HTMLDivElement>('yt-countin-bar');
+const ytCountInLabelEl = $<HTMLSpanElement>('yt-countin-label');
+const ytCountInNumberEl = $<HTMLSpanElement>('yt-countin-number');
+const btnYtCancelCountIn = $<HTMLButtonElement>('btn-yt-cancel-countin');
 
 const timeCurrentEl = $<HTMLSpanElement>('time-current');
 const timeDurationEl = $<HTMLSpanElement>('time-duration');
@@ -314,16 +318,28 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
     setStageFullscreen(false);
   }
 
-  // Count-In overlay (only over local stage; YouTube uses native player without overlays)
-  if (snap.countInRemaining !== null && !isYouTube) {
-    countInOverlay.classList.remove('hidden');
+  // Count-In display: stage overlay for local media, timeline bar for YouTube (YouTube ToS compliant)
+  if (snap.countInRemaining !== null) {
     const isBeats = snap.countInMode === 'beats';
-    countInLabelEl.textContent = isBeats
+    const labelText = isBeats
       ? `BEAT COUNT (${snap.beatCount} Beats @ ${Math.round(snap.bpm * snap.speed)} BPM)`
       : 'GET READY';
-    countInNumberEl.textContent = String(snap.countInRemaining);
+    const numText = String(snap.countInRemaining);
+
+    if (isYouTube) {
+      countInOverlay.classList.add('hidden');
+      ytCountInBarEl.classList.remove('hidden');
+      ytCountInLabelEl.textContent = labelText;
+      ytCountInNumberEl.textContent = numText;
+    } else {
+      ytCountInBarEl.classList.add('hidden');
+      countInOverlay.classList.remove('hidden');
+      countInLabelEl.textContent = labelText;
+      countInNumberEl.textContent = numText;
+    }
   } else {
     countInOverlay.classList.add('hidden');
+    ytCountInBarEl.classList.add('hidden');
   }
 
   // Play/Pause & Restart A buttons
@@ -1277,6 +1293,7 @@ btnPlay.addEventListener('click', () => player.togglePlay());
 btnBack5.addEventListener('click', () => player.seekBy(-5));
 btnFwd5.addEventListener('click', () => player.seekBy(5));
 btnCancelCountIn.addEventListener('click', () => player.cancelCountIn());
+btnYtCancelCountIn.addEventListener('click', () => player.cancelCountIn());
 
 btnFsRestartA.addEventListener('click', () => {
   restartFromPointA();

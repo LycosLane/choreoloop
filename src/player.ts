@@ -56,8 +56,9 @@ export class ChoreoPlayer {
 
   private rafId: number | null = null;
   private countInTimerId: number | null = null;
-  private unlockTimerId: number | null = null;
   private ytLoadSeq = 0;
+  private ytCountInResumeTime: number | null = null;
+  private ytWasMutedBeforeCountIn = false;
 
   private speed = 1.0;
   private mirror = false;
@@ -174,7 +175,6 @@ export class ChoreoPlayer {
 
       this.ytContainerEl.innerHTML = '<div id="yt-player-mount"></div>';
       this.ytPlayer = new YT.Player('yt-player-mount', {
-        host: 'https://www.youtube-nocookie.com',
         videoId,
         playerVars: {
           playsinline: 1,
@@ -191,6 +191,9 @@ export class ChoreoPlayer {
             this.emitState();
           },
           onStateChange: (e) => {
+            if (this.countInRemaining !== null) {
+              return;
+            }
             const state = e.data;
             if (state === YT.PlayerState.PLAYING) {
               this.ytPlaying = true;
@@ -338,8 +341,19 @@ export class ChoreoPlayer {
 
     if (this.activeKind === 'youtube') {
       if (!this.ytReady || !this.ytPlayer) return;
-      this.ytPlayer.setPlaybackRate(this.speed);
+      if (this.ytCountInResumeTime !== null) {
+        const targetTime = this.ytCountInResumeTime;
+        this.ytCountInResumeTime = null;
+        this.ytPlayer.seekTo(targetTime, true);
+        if (!this.ytWasMutedBeforeCountIn) {
+          this.ytPlayer.unMute();
+        }
+      }
       this.ytPlayer.playVideo();
+      this.ytPlayer.setPlaybackRate(this.speed);
+      this.ytPlaying = true;
+      this.startLoopMonitor();
+      this.emitState();
       return;
     }
 
@@ -354,16 +368,18 @@ export class ChoreoPlayer {
   private startCountIn(): void {
     // Unlock HTML media element or YouTube iframe on iOS/Android within user gesture
     if (this.activeKind === 'youtube' && this.ytReady && this.ytPlayer) {
-      const wasMuted = this.ytPlayer.isMuted();
+      const cur = this.getCurrentTimeInternal();
+      const shouldStartAtA =
+        this.loopEnabled &&
+        this.pointA !== null &&
+        this.pointB !== null &&
+        this.pointB > this.pointA &&
+        (cur < this.pointA || cur >= this.pointB);
+      this.ytCountInResumeTime = shouldStartAtA && this.pointA !== null ? this.pointA : cur;
+      this.ytWasMutedBeforeCountIn = this.ytPlayer.isMuted();
+      // Keep YouTube iframe playing muted during count-in so mobile browsers preserve the user gesture unlock
       this.ytPlayer.mute();
       this.ytPlayer.playVideo();
-      this.unlockTimerId = window.setTimeout(() => {
-        this.unlockTimerId = null;
-        if (this.ytPlayer) {
-          this.ytPlayer.pauseVideo();
-          if (!wasMuted) this.ytPlayer.unMute();
-        }
-      }, 60);
     } else {
       const media = this.activeHtmlMedia;
       if (media) {
@@ -421,6 +437,17 @@ export class ChoreoPlayer {
     if (this.countInRemaining === null && this.countInTimerId === null) return;
     this.clearCountInTimer();
     this.countInRemaining = null;
+    if (this.activeKind === 'youtube' && this.ytPlayer) {
+      this.ytPlayer.pauseVideo();
+      if (!this.ytWasMutedBeforeCountIn) {
+        this.ytPlayer.unMute();
+      }
+      if (this.ytCountInResumeTime !== null) {
+        this.ytPlayer.seekTo(this.ytCountInResumeTime, true);
+        this.ytCountInResumeTime = null;
+      }
+      this.ytPlaying = false;
+    }
     this.emitState();
   }
 
@@ -428,14 +455,6 @@ export class ChoreoPlayer {
     if (this.countInTimerId !== null) {
       window.clearInterval(this.countInTimerId);
       this.countInTimerId = null;
-    }
-    if (this.unlockTimerId !== null) {
-      window.clearTimeout(this.unlockTimerId);
-      this.unlockTimerId = null;
-      if (this.activeKind === 'youtube' && this.ytPlayer) {
-        this.ytPlayer.pauseVideo();
-        this.ytPlayer.unMute();
-      }
     }
   }
 

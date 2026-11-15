@@ -585,6 +585,33 @@ button:focus-visible,
   font-weight: 800;
   line-height: 1;
   color: #ffffff;
+  font-variant-numeric: tabular-nums;
+}
+
+.yt-countin-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--cyan-soft);
+  border: 1px solid var(--cyan);
+}
+
+.yt-countin-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text);
+}
+
+.yt-countin-number {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--cyan);
+  font-variant-numeric: tabular-nums;
 }
 
 /* Timeline Card */
