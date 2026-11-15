@@ -1,5 +1,14 @@
 node_modules/
 dist/
+.vite/
 .DS_Store
 Thumbs.db
+desktop.ini
 *.local
+*.log
+npm-debug.log*
+*.tmp
+.env
+.env.*
+.vscode/
+.idea/
