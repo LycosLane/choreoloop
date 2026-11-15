@@ -58,9 +58,18 @@ export function generateId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 9)}`;
 }
 
+import type { CountInTone } from './types';
+
 let audioCtx: AudioContext | null = null;
 
-export function playCountInTone(isGoTone: boolean): void {
+export function playCountInTone(
+  isGoTone: boolean,
+  tone: CountInTone = 'woodblock',
+  volume = 0.85
+): void {
+  const clampedVol = Math.max(0, Math.min(1, volume));
+  if (clampedVol <= 0.005) return;
+
   try {
     const AudioContextCtor =
       window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
@@ -71,16 +80,41 @@ export function playCountInTone(isGoTone: boolean): void {
     if (audioCtx.state === 'suspended') {
       void audioCtx.resume();
     }
+    const now = audioCtx.currentTime;
     const osc = audioCtx.createOscillator();
     const gain = audioCtx.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = isGoTone ? 880 : 520;
-    gain.gain.setValueAtTime(0.08, audioCtx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + (isGoTone ? 0.16 : 0.09));
-    osc.connect(gain);
-    gain.connect(audioCtx.destination);
-    osc.start();
-    osc.stop(audioCtx.currentTime + (isGoTone ? 0.17 : 0.1));
+    const peak = clampedVol * 0.85;
+
+    if (tone === 'woodblock') {
+      osc.type = 'triangle';
+      const startFreq = isGoTone ? 1180 : 780;
+      osc.frequency.setValueAtTime(startFreq, now);
+      osc.frequency.exponentialRampToValueAtTime(startFreq * 0.72, now + 0.055);
+      gain.gain.setValueAtTime(peak, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + (isGoTone ? 0.11 : 0.065));
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + (isGoTone ? 0.12 : 0.07));
+    } else if (tone === 'click') {
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(isGoTone ? 1650 : 1120, now);
+      gain.gain.setValueAtTime(peak * 0.65, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + (isGoTone ? 0.06 : 0.035));
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + (isGoTone ? 0.065 : 0.04));
+    } else {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(isGoTone ? 920 : 580, now);
+      gain.gain.setValueAtTime(peak * 0.75, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + (isGoTone ? 0.15 : 0.09));
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start(now);
+      osc.stop(now + (isGoTone ? 0.16 : 0.1));
+    }
   } catch {
     // Ignore audio context restrictions
   }

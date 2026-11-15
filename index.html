@@ -55,17 +55,8 @@
               &#8942;
             </button>
             <div id="header-menu" class="header-menu hidden" role="menu">
-              <button id="btn-import-top" class="menu-item" type="button" role="menuitem">
-                + File
-              </button>
-              <button id="btn-yt-top" class="menu-item" type="button" role="menuitem">
-                + YouTube
-              </button>
               <button id="btn-theme" class="menu-item" type="button" role="menuitem">
                 Switch to Light Mode
-              </button>
-              <button id="btn-keep-copy-menu" class="menu-item" type="button" role="menuitem">
-                Keep Local Copy: On
               </button>
               <button id="btn-guide" class="menu-item" type="button" role="menuitem">
                 How-To &amp; Privacy
@@ -121,19 +112,25 @@
             <div id="yt-container" class="yt-container"></div>
           </div>
 
-          <!-- Audio Stage -->
+          <!-- Audio Stage (Studio Display) -->
           <div id="stage-audio-wrap" class="stage-audio-wrap hidden">
-            <div class="audio-disc" id="audio-disc">
-              <img src="./icons/choreoloop.svg" alt="" class="audio-disc-icon" data-theme-logo />
+            <div class="audio-studio-top">
+              <div class="audio-disc" id="audio-disc">
+                <img src="./icons/choreoloop.svg" alt="" class="audio-disc-icon" data-theme-logo />
+              </div>
+              <div class="audio-meta">
+                <span id="audio-track-name" class="audio-track-name">Track</span>
+                <span id="audio-loop-status" class="audio-status">Audio Mode</span>
+              </div>
             </div>
-            <div class="audio-meta">
-              <span id="audio-track-name" class="audio-track-name">Track</span>
-              <span id="audio-loop-status" class="audio-status">Audio Mode</span>
-            </div>
+            <div id="audio-timecode" class="audio-timecode">00:00.0</div>
           </div>
 
-          <!-- Stage Overlays (Mirror Badge + Fullscreen Toggle) -->
+          <!-- Stage Overlays (Mirror Badge + Zoom Reset + Fullscreen Toggle + Fullscreen HUD) -->
           <span id="mirror-badge" class="stage-badge hidden">MIRRORED</span>
+          <button id="btn-zoom-reset" class="btn-stage-zoom hidden" type="button" aria-label="Reset video zoom">
+            1.0x
+          </button>
           <button
             id="btn-fullscreen"
             class="btn-stage-fs hidden"
@@ -142,6 +139,13 @@
           >
             Fullscreen
           </button>
+          <div id="fs-hud" class="fs-hud hidden" role="toolbar" aria-label="Fullscreen playback controls">
+            <button id="btn-fs-restart-a" class="btn-fs-ctrl" type="button">Restart A</button>
+            <button id="btn-fs-back-5" class="btn-fs-ctrl" type="button">-5s</button>
+            <button id="btn-fs-play" class="btn-fs-ctrl btn-fs-play" type="button" aria-label="Play or pause">&#9654;</button>
+            <button id="btn-fs-loop" class="btn-fs-ctrl" type="button">Loop</button>
+            <button id="btn-fs-exit" class="btn-fs-ctrl" type="button">Exit</button>
+          </div>
 
           <audio id="audio-player" preload="auto"></audio>
 
@@ -184,10 +188,13 @@
 
           <!-- Primary Transport -->
           <div class="transport-row">
+            <button id="btn-restart-a" class="btn-icon-text btn-restart-a" type="button" title="Restart from Point A" disabled>
+              &#8634; A
+            </button>
             <button id="btn-back-5" class="btn-icon-text" type="button" aria-label="Rewind 5 seconds">
               -5s
             </button>
-            <button id="btn-play" class="btn-play" type="button" aria-label="Play or pause">
+            <button id="btn-play" class="btn-play" type="button" aria-label="Play">
               <span id="play-icon">&#9654;</span>
             </button>
             <button id="btn-fwd-5" class="btn-icon-text" type="button" aria-label="Forward 5 seconds">
@@ -221,6 +228,9 @@
             <div class="bpm-field">
               <label for="bpm-input" class="group-label">BPM</label>
               <div class="bpm-controls">
+                <button id="btn-tap-bpm" class="btn-stepper btn-tap-bpm" type="button" title="Tap along to the beat">
+                  Tap
+                </button>
                 <button id="btn-bpm-minus" class="btn-stepper" type="button">-5</button>
                 <input
                   id="bpm-input"
@@ -250,6 +260,25 @@
                 />
                 <button id="btn-beat-count-plus" class="btn-stepper" type="button">+1</button>
               </div>
+            </div>
+
+            <div class="bpm-field bpm-sound-field">
+              <span class="group-label">Tone</span>
+              <div class="segmented-group" role="group" aria-label="Count-in sound">
+                <button class="btn-step is-active" data-tone="woodblock" type="button">Wood</button>
+                <button class="btn-step" data-tone="click" type="button">Click</button>
+                <button class="btn-step" data-tone="beep" type="button">Beep</button>
+              </div>
+              <input
+                id="countin-vol"
+                class="vol-slider"
+                type="range"
+                min="0"
+                max="1"
+                step="0.05"
+                value="0.85"
+                aria-label="Count-in volume"
+              />
             </div>
 
             <span id="bpm-effective" class="bpm-effective">4 Beats @ 120 BPM</span>
@@ -289,7 +318,7 @@
           <div class="nudge-grid">
             <div class="nudge-box">
               <button id="btn-jump-a" class="nudge-label" type="button" title="Jump to A">
-                A: <span id="label-a">--:--.-</span>
+                &#9654; A: <span id="label-a">--:--.-</span>
               </button>
               <div class="nudge-btns">
                 <button id="btn-a-minus" class="btn-nudge" type="button" disabled>-0.1s</button>
@@ -298,7 +327,7 @@
             </div>
             <div class="nudge-box">
               <button id="btn-jump-b" class="nudge-label" type="button" title="Jump to B">
-                B: <span id="label-b">--:--.-</span>
+                &#9654; B: <span id="label-b">--:--.-</span>
               </button>
               <div class="nudge-btns">
                 <button id="btn-b-minus" class="btn-nudge" type="button" disabled>-0.1s</button>
@@ -309,16 +338,24 @@
 
           <!-- Inline Bookmark Creator -->
           <form id="bookmark-form" class="bookmark-form hidden">
-            <input
-              id="bookmark-name-input"
-              type="text"
-              class="text-input"
-              placeholder="Section name (e.g. Chorus, Bridge)"
-              maxlength="32"
-              required
-            />
-            <button class="btn-mini btn-accent" type="submit">Save</button>
-            <button id="btn-cancel-bookmark" class="btn-mini btn-surface" type="button">Cancel</button>
+            <div class="bookmark-presets" role="group" aria-label="Quick section labels">
+              <button class="btn-preset-chip" data-bm-preset="Intro" type="button">Intro</button>
+              <button class="btn-preset-chip" data-bm-preset="Verse" type="button">Verse</button>
+              <button class="btn-preset-chip" data-bm-preset="Chorus" type="button">Chorus</button>
+              <button class="btn-preset-chip" data-bm-preset="Bridge" type="button">Bridge</button>
+              <button class="btn-preset-chip" data-bm-preset="8-Count" type="button">8-Count</button>
+            </div>
+            <div class="bookmark-input-row">
+              <input
+                id="bookmark-name-input"
+                type="text"
+                class="text-input"
+                placeholder="Section name (auto-fills if empty)"
+                maxlength="32"
+              />
+              <button class="btn-mini btn-accent" type="submit">Save</button>
+              <button id="btn-cancel-bookmark" class="btn-mini btn-surface" type="button">Cancel</button>
+            </div>
           </form>
 
           <!-- Saved Loop Bookmarks -->
@@ -331,13 +368,17 @@
         <section class="panel-card" aria-label="Playback Speed">
           <div class="panel-header">
             <h2 class="panel-title">Speed (Pitch Preserved)</h2>
-            <span id="speed-readout" class="speed-readout">1.00x</span>
+            <div class="speed-stepper-wrap">
+              <button id="btn-speed-minus" class="btn-stepper" type="button" aria-label="Decrease speed by 5%">-5%</button>
+              <span id="speed-readout" class="speed-readout">1.00x</span>
+              <button id="btn-speed-plus" class="btn-stepper" type="button" aria-label="Increase speed by 5%">+5%</button>
+            </div>
           </div>
 
           <div class="speed-presets">
             <button class="btn-chip" data-speed="0.5" type="button">0.5x</button>
             <button class="btn-chip" data-speed="0.75" type="button">0.75x</button>
-            <button class="btn-chip" data-speed="0.85" type="button">0.85x</button>
+            <button class="btn-chip" data-speed="0.9" type="button">0.9x</button>
             <button class="btn-chip is-active" data-speed="1" type="button">1.0x</button>
           </div>
 
@@ -414,7 +455,7 @@
                 Everything runs locally in your browser.
               </p>
               <p>
-                When you tap <strong>+ File</strong>, ChoreoLoop can either save a <strong>local copy</strong> in IndexedDB (instant offline switch) or <strong>stream directly</strong> without copying (0 MB storage, ideal for 1h videos).
+                When you tap <strong>+ File</strong>, ChoreoLoop can either save a <strong>local copy</strong> in IndexedDB (instant offline switch) or <strong>stream directly</strong> without copying (0 MB storage, ideal for long videos).
                 <br />
                 Your loops, BPM, and bookmarks are always saved per file.
                 <br />
@@ -451,7 +492,7 @@
                   <tr>
                     <td>Slow-Motion Speed</td>
                     <td>Smooth 0.25x - 1.25x</td>
-                    <td>Fixed API steps (0.25, 0.5, 0.75, 1.0, 1.25)</td>
+                    <td>Fixed API steps (0.25x, 0.5x, 0.75x, 1.0x, 1.25x)</td>
                   </tr>
                   <tr>
                     <td>A-B Loop &amp; Bookmarks</td>
@@ -473,7 +514,7 @@
                 <em>Icon Tip:</em> Pick Dark Mode (White Hat) or Light Mode (Black Hat) before saving to use that icon on your Home Screen.
               </p>
               <p>
-                <em>Offline Tip:</em> Before heading into a groove cave with no mobile data, refresh once while online to cache the latest version (or keep the tab open).
+                <em>Offline Tip:</em> Before heading into a dance studio or basement with no mobile data, refresh once while online to cache the latest version (or keep the tab open).
                 <br />
                 Your local library and bookmarks are never deleted on refresh.
               </p>
@@ -491,8 +532,8 @@
               <button id="btn-clear-library" class="btn-pill btn-danger-outline" type="button" disabled>
                 Clear All
               </button>
-              <button id="btn-yt-modal" class="btn-pill btn-accent" type="button">+ YouTube</button>
               <button id="btn-import-modal" class="btn-pill btn-accent" type="button">+ File</button>
+              <button id="btn-yt-modal" class="btn-pill btn-accent" type="button">+ YouTube</button>
               <button id="btn-close-library" class="btn-pill btn-surface" type="button">Close</button>
             </div>
           </div>
@@ -514,6 +555,15 @@
           <p class="modal-note">
             With Keep Copy on, files are cached offline in IndexedDB for 1-tap loading. Turn Keep Copy off to stream large videos with 0 MB copy - your loops and settings still auto-restore when you re-select the file.
           </p>
+          <div id="storage-choice-banner" class="confirm-banner hidden" role="alert">
+            <span id="storage-choice-text" class="confirm-text">
+              Large file or cache (&gt;500 MB). Save an offline copy, or stream directly (0 MB)? Due to iOS/Android browser security, streamed files must be re-selected after an app restart, though your loops stay saved.
+            </span>
+            <div class="confirm-actions">
+              <button id="btn-choice-stream" class="btn-mini btn-surface" type="button">Stream (0 MB)</button>
+              <button id="btn-choice-copy" class="btn-mini btn-accent" type="button">Save Copy</button>
+            </div>
+          </div>
           <div id="library-list" class="library-list"></div>
         </div>
       </div>

@@ -84,6 +84,13 @@ function normalizeTrackSettings(raw: Partial<TrackMetadata['settings']> | undefi
   const pointA = typeof raw?.pointA === 'number' && Number.isFinite(raw.pointA) && raw.pointA >= 0 ? raw.pointA : null;
   const pointB = typeof raw?.pointB === 'number' && Number.isFinite(raw.pointB) && raw.pointB >= 0 ? raw.pointB : null;
 
+  const rawVol = Number(raw?.countInVolume);
+  const countInVolume = Number.isFinite(rawVol) ? Math.min(1, Math.max(0, rawVol)) : 0.85;
+  const countInTone =
+    raw?.countInTone === 'click' || raw?.countInTone === 'beep' || raw?.countInTone === 'woodblock'
+      ? raw.countInTone
+      : 'woodblock';
+
   return {
     speed,
     mirror: Boolean(raw?.mirror),
@@ -92,6 +99,8 @@ function normalizeTrackSettings(raw: Partial<TrackMetadata['settings']> | undefi
     repeatCountInOnLoop: raw?.repeatCountInOnLoop ?? true,
     bpm: Math.min(240, Math.max(40, Math.round(raw?.bpm ?? 120))),
     beatCount: Math.max(1, Math.min(16, Math.round(beatCount))),
+    countInTone,
+    countInVolume,
     pointA,
     pointB,
     loopEnabled: raw?.loopEnabled ?? false,

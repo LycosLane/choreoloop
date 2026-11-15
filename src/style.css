@@ -327,6 +327,8 @@ button:focus-visible,
   align-items: center;
   justify-content: center;
   max-height: 46dvh;
+  overflow: hidden;
+  touch-action: none;
 }
 
 .stage-yt-wrap {
@@ -397,15 +399,81 @@ button:focus-visible,
 }
 
 .video-el {
+  --zoom: 1;
+  --pan-x: 0px;
+  --pan-y: 0px;
+  --mirror-x: 1;
   width: 100%;
   max-height: 46dvh;
   object-fit: contain;
   display: block;
-  transition: transform 0.2s ease;
+  transform: translate3d(var(--pan-x), var(--pan-y), 0) scale(var(--zoom)) scaleX(var(--mirror-x));
+  transform-origin: center center;
+  transition: transform 0.08s ease-out;
+}
+
+.video-el.is-gesturing {
+  transition: none;
 }
 
 .video-el.is-mirrored {
-  transform: scaleX(-1);
+  --mirror-x: -1;
+}
+
+.btn-stage-zoom {
+  position: absolute;
+  bottom: calc(10px + env(safe-area-inset-bottom));
+  left: calc(10px + env(safe-area-inset-left));
+  z-index: 6;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(16, 18, 22, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--cyan);
+  font-size: 12px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.fs-hud {
+  position: absolute;
+  left: 50%;
+  bottom: calc(18px + env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  z-index: 7;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(16, 18, 22, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(8px);
+  max-width: calc(100vw - 32px);
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.btn-fs-ctrl {
+  height: 36px;
+  padding: 0 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.btn-fs-ctrl.is-active {
+  background: var(--mint);
+  color: #051610;
+}
+
+.btn-fs-play {
+  background: var(--cyan);
+  color: #061018;
+  min-width: 44px;
 }
 
 .stage-badge {
@@ -424,10 +492,27 @@ button:focus-visible,
 
 .stage-audio-wrap {
   width: 100%;
-  padding: 26px 20px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.audio-studio-top {
+  width: 100%;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
+}
+
+.audio-timecode {
+  font-size: clamp(40px, 11vw, 56px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
 }
 
 .audio-disc {
@@ -746,10 +831,30 @@ button:focus-visible,
   gap: 6px;
 }
 
-.subdivision-group {
+.btn-tap-bpm {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+
+.btn-tap-bpm.is-tapping {
+  background: var(--cyan);
+  color: #061018;
+}
+
+.bpm-sound-field {
+  flex-wrap: wrap;
+}
+
+.vol-slider {
+  width: 78px;
+  accent-color: var(--cyan);
+  height: 28px;
+}
+
+.speed-stepper-wrap {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
 }
 
 .bpm-controls {
@@ -804,9 +909,9 @@ button:focus-visible,
 }
 
 .btn-step {
-  min-height: 26px;
-  height: 26px;
-  padding: 0 8px;
+  min-height: 32px;
+  height: 32px;
+  padding: 0 9px;
   border-radius: calc(var(--radius-sm) - 3px);
   font-size: 12px;
   font-weight: 700;
@@ -1044,6 +1149,34 @@ button:focus-visible,
 /* Bookmarks */
 .bookmark-form {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.bookmark-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.btn-preset-chip {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.btn-preset-chip:active {
+  border-color: var(--cyan);
+  color: var(--cyan);
+}
+
+.bookmark-input-row {
+  display: flex;
   gap: 8px;
   align-items: center;
 }
@@ -1105,14 +1238,14 @@ button:focus-visible,
 }
 
 .bookmark-delete {
-  width: 24px;
-  height: 24px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  font-size: 14px;
+  font-size: 18px;
 }
 
 .bookmark-delete:hover {
@@ -1329,4 +1462,49 @@ button:focus-visible,
   display: flex;
   justify-content: flex-end;
   gap: 8px;
+}
+
+@media (max-width: 400px) {
+  .transport-row {
+    gap: 10px;
+  }
+
+  .btn-icon-text {
+    min-width: 52px;
+    padding: 0 8px;
+    font-size: 13px;
+  }
+
+  .modal-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+
+@media (min-width: 860px), (orientation: landscape) and (min-width: 640px) {
+  .app-shell {
+    max-width: 1120px;
+  }
+
+  .studio-main {
+    display: grid;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr);
+    align-items: start;
+    gap: 14px;
+  }
+
+  .stage-card {
+    grid-column: 1;
+    position: sticky;
+    top: 12px;
+  }
+
+  .studio-main > .timeline-card,
+  .studio-main > .panel-card {
+    grid-column: 2;
+  }
+
+  .video-el {
+    max-height: 70dvh;
+  }
 }

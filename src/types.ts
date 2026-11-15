@@ -2,6 +2,8 @@ export type MediaKind = 'audio' | 'video' | 'youtube';
 
 export type CountInMode = '3s' | '5s' | 'beats';
 
+export type CountInTone = 'woodblock' | 'click' | 'beep';
+
 export interface LoopBookmark {
   id: string;
   name: string;
@@ -18,6 +20,8 @@ export interface TrackSettings {
   repeatCountInOnLoop: boolean;
   bpm: number;
   beatCount: number;
+  countInTone: CountInTone;
+  countInVolume: number;
   pointA: number | null;
   pointB: number | null;
   loopEnabled: boolean;

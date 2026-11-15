@@ -1,4 +1,4 @@
-import type { CountInMode, MediaKind, TrackSettings } from './types';
+import type { CountInMode, CountInTone, MediaKind, TrackSettings } from './types';
 import { clamp, playCountInTone } from './utils';
 import { loadYouTubeAPI, type YTPlayerInstance } from './youtube';
 
@@ -13,6 +13,8 @@ export interface PlayerStateSnapshot {
   repeatCountInOnLoop: boolean;
   bpm: number;
   beatCount: number;
+  countInTone: CountInTone;
+  countInVolume: number;
   countInRemaining: number | null;
   pointA: number | null;
   pointB: number | null;
@@ -64,6 +66,8 @@ export class ChoreoPlayer {
   private repeatCountInOnLoop = true;
   private bpm = 120;
   private beatCount = 4;
+  private countInTone: CountInTone = 'woodblock';
+  private countInVolume = 0.85;
   private countInRemaining: number | null = null;
   private pointA: number | null = null;
   private pointB: number | null = null;
@@ -234,6 +238,8 @@ export class ChoreoPlayer {
     this.repeatCountInOnLoop = settings.repeatCountInOnLoop ?? true;
     this.bpm = clamp(settings.bpm || 120, 40, 240);
     this.beatCount = clamp(Math.round(settings.beatCount || 4), 1, 16);
+    this.countInTone = settings.countInTone ?? 'woodblock';
+    this.countInVolume = clamp(settings.countInVolume ?? 0.85, 0, 1);
     this.pointA = settings.pointA;
     this.pointB = settings.pointB;
     this.loopEnabled = settings.loopEnabled;
@@ -386,7 +392,9 @@ export class ChoreoPlayer {
 
     let stepIndex = 1;
     this.countInRemaining = isBeats ? 1 : totalSteps;
-    playCountInTone(false);
+    if (isBeats) {
+      playCountInTone(false, this.countInTone, this.countInVolume);
+    }
     this.emitState();
 
     this.countInTimerId = window.setInterval(() => {
@@ -394,12 +402,16 @@ export class ChoreoPlayer {
       if (stepIndex > totalSteps) {
         this.clearCountInTimer();
         this.countInRemaining = null;
-        playCountInTone(true);
+        if (isBeats) {
+          playCountInTone(true, this.countInTone, this.countInVolume);
+        }
         this.emitState();
         this.startPlayback();
       } else {
         this.countInRemaining = isBeats ? stepIndex : totalSteps - stepIndex + 1;
-        playCountInTone(false);
+        if (isBeats) {
+          playCountInTone(false, this.countInTone, this.countInVolume);
+        }
         this.emitState();
       }
     }, stepMs);
@@ -526,6 +538,19 @@ export class ChoreoPlayer {
 
   public setBeatCount(count: number): void {
     this.beatCount = clamp(Math.round(count), 1, 16);
+    this.emitState();
+    this.callbacks.onSettingsChanged();
+  }
+
+  public setCountInTone(tone: CountInTone): void {
+    this.countInTone = tone;
+    playCountInTone(false, this.countInTone, this.countInVolume);
+    this.emitState();
+    this.callbacks.onSettingsChanged();
+  }
+
+  public setCountInVolume(volume: number): void {
+    this.countInVolume = clamp(volume, 0, 1);
     this.emitState();
     this.callbacks.onSettingsChanged();
   }
@@ -667,6 +692,8 @@ export class ChoreoPlayer {
       repeatCountInOnLoop: this.repeatCountInOnLoop,
       bpm: this.bpm,
       beatCount: this.beatCount,
+      countInTone: this.countInTone,
+      countInVolume: this.countInVolume,
       countInRemaining: this.countInRemaining,
       pointA: this.pointA,
       pointB: this.pointB,

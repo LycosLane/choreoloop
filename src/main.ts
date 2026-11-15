@@ -13,7 +13,7 @@ import {
   updateTrackMeta,
 } from './db';
 import { ChoreoPlayer, type PlayerStateSnapshot } from './player';
-import type { CountInMode, LoopBookmark, TrackMetadata } from './types';
+import type { CountInMode, CountInTone, LoopBookmark, TrackMetadata } from './types';
 import { clamp, formatBytes, formatTime, generateId } from './utils';
 import { extractYouTubeId } from './youtube';
 
@@ -38,9 +38,17 @@ const videoEl = $<HTMLVideoElement>('video-player');
 const audioEl = $<HTMLAudioElement>('audio-player');
 const mirrorBadgeEl = $<HTMLSpanElement>('mirror-badge');
 const btnFullscreen = $<HTMLButtonElement>('btn-fullscreen');
+const btnZoomReset = $<HTMLButtonElement>('btn-zoom-reset');
+const fsHudEl = $<HTMLDivElement>('fs-hud');
+const btnFsRestartA = $<HTMLButtonElement>('btn-fs-restart-a');
+const btnFsBack5 = $<HTMLButtonElement>('btn-fs-back-5');
+const btnFsPlay = $<HTMLButtonElement>('btn-fs-play');
+const btnFsLoop = $<HTMLButtonElement>('btn-fs-loop');
+const btnFsExit = $<HTMLButtonElement>('btn-fs-exit');
 const audioDiscEl = $<HTMLDivElement>('audio-disc');
 const audioTrackNameEl = $<HTMLSpanElement>('audio-track-name');
 const audioLoopStatusEl = $<HTMLSpanElement>('audio-loop-status');
+const audioTimecodeEl = $<HTMLDivElement>('audio-timecode');
 
 const countInOverlay = $<HTMLDivElement>('countin-overlay');
 const countInLabelEl = $<HTMLSpanElement>('countin-label');
@@ -58,6 +66,7 @@ const scrubberAbRangeEl = $<HTMLDivElement>('scrubber-ab-range');
 const markerAEl = $<HTMLDivElement>('marker-a');
 const markerBEl = $<HTMLDivElement>('marker-b');
 
+const btnRestartA = $<HTMLButtonElement>('btn-restart-a');
 const btnBack5 = $<HTMLButtonElement>('btn-back-5');
 const btnPlay = $<HTMLButtonElement>('btn-play');
 const playIconEl = $<HTMLSpanElement>('play-icon');
@@ -69,12 +78,15 @@ const countInOptionsEl = $<HTMLDivElement>('countin-options');
 const countInButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-countin]'));
 const btnLoopCountIn = $<HTMLButtonElement>('btn-loop-countin');
 const bpmRowEl = $<HTMLDivElement>('bpm-row');
+const btnTapBpm = $<HTMLButtonElement>('btn-tap-bpm');
 const bpmInput = $<HTMLInputElement>('bpm-input');
 const btnBpmMinus = $<HTMLButtonElement>('btn-bpm-minus');
 const btnBpmPlus = $<HTMLButtonElement>('btn-bpm-plus');
 const beatCountInput = $<HTMLInputElement>('beat-count-input');
 const btnBeatCountMinus = $<HTMLButtonElement>('btn-beat-count-minus');
 const btnBeatCountPlus = $<HTMLButtonElement>('btn-beat-count-plus');
+const toneButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-tone]'));
+const countInVolSlider = $<HTMLInputElement>('countin-vol');
 const bpmEffectiveEl = $<HTMLSpanElement>('bpm-effective');
 
 const btnSetA = $<HTMLButtonElement>('btn-set-a');
@@ -96,9 +108,12 @@ const btnSaveBookmark = $<HTMLButtonElement>('btn-save-bookmark');
 const bookmarkForm = $<HTMLFormElement>('bookmark-form');
 const bookmarkNameInput = $<HTMLInputElement>('bookmark-name-input');
 const btnCancelBookmark = $<HTMLButtonElement>('btn-cancel-bookmark');
+const bookmarkPresetButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-bm-preset]'));
 const bookmarksListEl = $<HTMLDivElement>('bookmarks-list');
 
 const speedReadoutEl = $<HTMLSpanElement>('speed-readout');
+const btnSpeedMinus = $<HTMLButtonElement>('btn-speed-minus');
+const btnSpeedPlus = $<HTMLButtonElement>('btn-speed-plus');
 const speedSlider = $<HTMLInputElement>('speed-slider');
 const speedButtons = Array.from(document.querySelectorAll<HTMLButtonElement>('[data-speed]'));
 
@@ -117,7 +132,10 @@ const libraryModal = $<HTMLDivElement>('library-modal');
 const libraryListEl = $<HTMLDivElement>('library-list');
 const libraryStorageEl = $<HTMLSpanElement>('library-storage');
 const btnKeepCopy = $<HTMLButtonElement>('btn-keep-copy');
-const btnKeepCopyMenu = $<HTMLButtonElement>('btn-keep-copy-menu');
+const storageChoiceBannerEl = $<HTMLDivElement>('storage-choice-banner');
+const storageChoiceTextEl = $<HTMLSpanElement>('storage-choice-text');
+const btnChoiceStream = $<HTMLButtonElement>('btn-choice-stream');
+const btnChoiceCopy = $<HTMLButtonElement>('btn-choice-copy');
 const btnClearLibrary = $<HTMLButtonElement>('btn-clear-library');
 const libraryConfirmEl = $<HTMLDivElement>('library-confirm');
 const libraryConfirmTextEl = $<HTMLSpanElement>('library-confirm-text');
@@ -150,7 +168,6 @@ const sessionFiles = new Map<string, File>();
 function syncKeepCopyUI(): void {
   btnKeepCopy.classList.toggle('is-active', keepLocalCopy);
   btnKeepCopy.setAttribute('aria-pressed', String(keepLocalCopy));
-  btnKeepCopyMenu.textContent = keepLocalCopy ? 'Keep Local Copy: On' : 'Keep Local Copy: Off';
 }
 
 function setKeepLocalCopy(enabled: boolean): void {
@@ -267,6 +284,8 @@ function scheduleSaveTrackSettings(): void {
     repeatCountInOnLoop: snap.repeatCountInOnLoop,
     bpm: snap.bpm,
     beatCount: snap.beatCount,
+    countInTone: snap.countInTone,
+    countInVolume: snap.countInVolume,
     pointA: snap.pointA,
     pointB: snap.pointB,
     loopEnabled: snap.loopEnabled,
@@ -307,12 +326,19 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
     countInOverlay.classList.add('hidden');
   }
 
-  // Play/Pause button
+  // Play/Pause & Restart A buttons
   playIconEl.innerHTML = snap.isPlaying ? '&#10074;&#10074;' : '&#9654;';
   btnPlay.setAttribute('aria-label', snap.isPlaying ? 'Pause' : 'Play');
   btnPlay.disabled = !hasMedia;
+  btnRestartA.disabled = !hasMedia;
   btnBack5.disabled = !hasMedia;
   btnFwd5.disabled = !hasMedia;
+
+  // Fullscreen HUD sync
+  btnFsPlay.innerHTML = snap.isPlaying ? '&#10074;&#10074;' : '&#9654;';
+  btnFsPlay.setAttribute('aria-label', snap.isPlaying ? 'Pause' : 'Play');
+  btnFsLoop.classList.toggle('is-active', snap.loopEnabled && snap.pointA !== null && snap.pointB !== null && snap.pointB > snap.pointA);
+  btnFsLoop.disabled = snap.pointA === null || snap.pointB === null || snap.pointB <= snap.pointA;
 
   // Audio disc animation & status
   audioDiscEl.classList.toggle('is-playing', snap.isPlaying);
@@ -359,6 +385,15 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
   const bpmSuffix =
     Math.abs(snap.speed - 1.0) < 0.01 ? `${snap.bpm} BPM` : `${effectiveBpm} eff. BPM`;
   bpmEffectiveEl.textContent = `${snap.beatCount} Beats @ ${bpmSuffix}`;
+
+  for (const btn of toneButtons) {
+    const isActive = btn.dataset.tone === snap.countInTone;
+    btn.classList.toggle('is-active', isActive);
+    btn.setAttribute('aria-pressed', String(isActive));
+  }
+  if (document.activeElement !== countInVolSlider) {
+    countInVolSlider.value = String(snap.countInVolume);
+  }
 
   // A-B Loop buttons
   const hasA = snap.pointA !== null;
@@ -407,6 +442,8 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
 
   renderTimeline(snap.currentTime, snap.duration);
   renderBookmarks();
+  syncWakeLock(hasMedia);
+  syncMediaSession(snap);
 }
 
 function renderTimeline(currentTime: number, duration: number): void {
@@ -414,6 +451,7 @@ function renderTimeline(currentTime: number, duration: number): void {
   const dur = duration > 0 ? duration : activeTrack?.duration ?? 0;
 
   timeCurrentEl.textContent = formatTime(currentTime);
+  audioTimecodeEl.textContent = formatTime(currentTime);
   timeDurationEl.textContent = formatTime(dur);
 
   const pct = dur > 0 ? clamp((currentTime / dur) * 100, 0, 100) : 0;
@@ -623,24 +661,19 @@ async function selectTrack(id: string, allowPrompt = true): Promise<void> {
   renderLibrary();
 }
 
-async function handleFilesImported(files: FileList | null): Promise<void> {
-  if (!files || files.length === 0) {
-    pendingRelinkTrackId = null;
-    return;
-  }
-
-  const relinkId = pendingRelinkTrackId;
-  pendingRelinkTrackId = null;
-
+async function processImportedFiles(
+  fileList: File[],
+  useKeepCopy: boolean,
+  relinkId: string | null
+): Promise<void> {
   let lastImported: TrackMetadata | null = null;
   let lastWasMatched = false;
   let lastQuotaFallback = false;
 
-  const fileList = Array.from(files);
   for (let i = 0; i < fileList.length; i += 1) {
     const file = fileList[i];
     try {
-      showToast(keepLocalCopy ? `Importing ${file.name}...` : `Loading ${file.name}...`);
+      showToast(useKeepCopy ? `Importing ${file.name}...` : `Loading ${file.name}...`);
       let existingTrack: TrackMetadata | undefined;
       if (relinkId && i === 0 && fileList.length === 1) {
         existingTrack = (await getTrackMeta(relinkId)) ?? undefined;
@@ -648,7 +681,7 @@ async function handleFilesImported(files: FileList | null): Promise<void> {
         existingTrack = await findMatchingLocalTrack(file);
       }
 
-      const result = await saveImportedFile(file, { keepLocalCopy, existingTrack });
+      const result = await saveImportedFile(file, { keepLocalCopy: useKeepCopy, existingTrack });
       sessionFiles.set(result.meta.id, file);
       lastImported = result.meta;
       lastWasMatched = Boolean(existingTrack);
@@ -671,7 +704,40 @@ async function handleFilesImported(files: FileList | null): Promise<void> {
       showToast(`Ready: ${lastImported.name}`);
     }
   }
+}
+
+let pendingChoiceFiles: File[] | null = null;
+let pendingChoiceRelinkId: string | null = null;
+
+async function handleFilesImported(files: FileList | null): Promise<void> {
+  if (!files || files.length === 0) {
+    pendingRelinkTrackId = null;
+    return;
+  }
+
+  const relinkId = pendingRelinkTrackId;
+  pendingRelinkTrackId = null;
+  const fileList = Array.from(files);
   fileInput.value = '';
+
+  const largeFileBytes = 250 * 1024 * 1024;
+  const cacheThresholdBytes = 500 * 1024 * 1024;
+  const cachedBytes = tracks
+    .filter((t) => t.mediaKind !== 'youtube' && t.hasOfflineCopy !== false)
+    .reduce((sum, t) => sum + (t.size || 0), 0);
+  const incomingBytes = fileList.reduce((sum, f) => sum + f.size, 0);
+  const hasLargeFile = fileList.some((f) => f.size > largeFileBytes);
+
+  if (keepLocalCopy && !relinkId && (hasLargeFile || cachedBytes + incomingBytes > cacheThresholdBytes)) {
+    pendingChoiceFiles = fileList;
+    pendingChoiceRelinkId = relinkId;
+    storageChoiceTextEl.textContent = `Large import (${formatBytes(incomingBytes)}, cached: ${formatBytes(cachedBytes)}). Save an offline copy, or stream directly (0 MB)? Due to iOS/Android browser security, streamed files must be re-selected after an app restart, though your loops stay saved.`;
+    storageChoiceBannerEl.classList.remove('hidden');
+    openLibraryModal();
+    return;
+  }
+
+  await processImportedFiles(fileList, keepLocalCopy, relinkId);
 }
 
 async function handleYouTubeImport(urlOrId: string, title?: string): Promise<void> {
@@ -699,7 +765,7 @@ async function handleDeleteTrack(id: string): Promise<void> {
   if (!activeTrack && tracks.length > 0) {
     await selectTrack(tracks[0].id, false);
   }
-  showToast('Track deleted');
+  showToast('Track removed from library');
 }
 
 async function saveBookmark(name: string): Promise<void> {
@@ -730,11 +796,219 @@ async function removeBookmark(bookmarkId: string): Promise<void> {
   renderBookmarks();
 }
 
+// Screen Wake Lock
+let wakeLockSentinel: WakeLockSentinel | null = null;
+let wakeLockWanted = false;
+
+async function acquireWakeLock(): Promise<void> {
+  if (!wakeLockWanted || document.visibilityState !== 'visible') return;
+  if (!('wakeLock' in navigator) || wakeLockSentinel) return;
+  try {
+    wakeLockSentinel = await navigator.wakeLock.request('screen');
+    wakeLockSentinel.addEventListener('release', () => {
+      wakeLockSentinel = null;
+    });
+  } catch {
+    // Ignore wake lock rejection (e.g. low battery mode)
+  }
+}
+
+function syncWakeLock(active: boolean): void {
+  wakeLockWanted = active;
+  if (active) {
+    void acquireWakeLock();
+  } else if (wakeLockSentinel) {
+    void wakeLockSentinel.release().catch(() => {});
+    wakeLockSentinel = null;
+  }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && wakeLockWanted) {
+    void acquireWakeLock();
+  }
+});
+
+// MediaSession (Bluetooth headphones / Apple Watch / clicker)
+let mediaSessionBound = false;
+function syncMediaSession(snap: PlayerStateSnapshot): void {
+  if (!('mediaSession' in navigator)) return;
+  if (!mediaSessionBound) {
+    mediaSessionBound = true;
+    const ms = navigator.mediaSession;
+    try {
+      ms.setActionHandler('play', () => player.togglePlay());
+      ms.setActionHandler('pause', () => player.togglePlay());
+      ms.setActionHandler('seekbackward', () => player.seekBy(-5));
+      ms.setActionHandler('seekforward', () => player.seekBy(5));
+      ms.setActionHandler('previoustrack', () => {
+        const s = player.getSnapshot();
+        player.seekTo(s.pointA ?? 0);
+      });
+    } catch {
+      // Ignore unsupported actions
+    }
+  }
+  if (activeTrack) {
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: activeTrack.name,
+      artist: 'ChoreoLoop',
+    });
+  }
+  navigator.mediaSession.playbackState = snap.isPlaying ? 'playing' : snap.mediaKind ? 'paused' : 'none';
+  if (snap.duration > 0 && navigator.mediaSession.setPositionState) {
+    try {
+      navigator.mediaSession.setPositionState({
+        duration: snap.duration,
+        playbackRate: snap.speed,
+        position: clamp(snap.currentTime, 0, snap.duration),
+      });
+    } catch {
+      // Ignore invalid state
+    }
+  }
+}
+
+// Fullscreen Stage + Auto-Hide HUD
+let fsHudTimer: number | null = null;
+function showFsHudTemporarily(): void {
+  if (!isStageFullscreen) {
+    fsHudEl.classList.add('hidden');
+    return;
+  }
+  fsHudEl.classList.remove('hidden');
+  if (fsHudTimer !== null) window.clearTimeout(fsHudTimer);
+  fsHudTimer = window.setTimeout(() => {
+    if (isStageFullscreen) {
+      fsHudEl.classList.add('hidden');
+    }
+  }, 3000);
+}
+
 function setStageFullscreen(active: boolean): void {
   isStageFullscreen = active;
   stageCardEl.classList.toggle('is-fullscreen', active);
   btnFullscreen.textContent = active ? 'Exit' : 'Fullscreen';
+  if (active) {
+    showFsHudTemporarily();
+  } else {
+    if (fsHudTimer !== null) window.clearTimeout(fsHudTimer);
+    fsHudEl.classList.add('hidden');
+  }
 }
+
+// Pinch-to-Zoom & Pan on Video Stage
+let videoZoom = 1;
+let videoPanX = 0;
+let videoPanY = 0;
+
+function applyVideoTransform(isGesturing = false): void {
+  videoEl.classList.toggle('is-gesturing', isGesturing);
+  videoEl.style.setProperty('--zoom', String(videoZoom));
+  videoEl.style.setProperty('--pan-x', `${videoPanX.toFixed(1)}px`);
+  videoEl.style.setProperty('--pan-y', `${videoPanY.toFixed(1)}px`);
+  const zoomed = videoZoom > 1.02;
+  btnZoomReset.classList.toggle('hidden', !zoomed);
+  if (zoomed) {
+    btnZoomReset.textContent = `${videoZoom.toFixed(1)}x Reset`;
+  }
+}
+
+function resetVideoZoom(): void {
+  videoZoom = 1;
+  videoPanX = 0;
+  videoPanY = 0;
+  applyVideoTransform(false);
+}
+
+btnZoomReset.addEventListener('click', (e) => {
+  e.stopPropagation();
+  resetVideoZoom();
+});
+videoEl.addEventListener('loadedmetadata', () => resetVideoZoom());
+
+const activePointers = new Map<number, { x: number; y: number }>();
+let pinchStartDist = 0;
+let pinchStartZoom = 1;
+let panStartX = 0;
+let panStartY = 0;
+let panOriginX = 0;
+let panOriginY = 0;
+let gestureMoved = false;
+
+function getPointerDistance(): number {
+  const pts = Array.from(activePointers.values());
+  if (pts.length < 2) return 0;
+  return Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
+}
+
+stageVideoWrap.addEventListener('pointerdown', (e) => {
+  if (e.target === btnZoomReset || e.target === btnFullscreen) return;
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  gestureMoved = false;
+  if (activePointers.size === 1) {
+    panStartX = e.clientX;
+    panStartY = e.clientY;
+    panOriginX = videoPanX;
+    panOriginY = videoPanY;
+  } else if (activePointers.size === 2) {
+    pinchStartDist = getPointerDistance();
+    pinchStartZoom = videoZoom;
+  }
+});
+
+stageVideoWrap.addEventListener('pointermove', (e) => {
+  if (!activePointers.has(e.pointerId)) return;
+  activePointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  if (activePointers.size === 2 && pinchStartDist > 10) {
+    gestureMoved = true;
+    const dist = getPointerDistance();
+    videoZoom = clamp(pinchStartZoom * (dist / pinchStartDist), 1, 3);
+    if (videoZoom <= 1.02) {
+      videoZoom = 1;
+      videoPanX = 0;
+      videoPanY = 0;
+    }
+    applyVideoTransform(true);
+  } else if (activePointers.size === 1 && videoZoom > 1.02) {
+    const dx = e.clientX - panStartX;
+    const dy = e.clientY - panStartY;
+    if (Math.hypot(dx, dy) > 4) gestureMoved = true;
+    const maxPanX = (stageVideoWrap.clientWidth * (videoZoom - 1)) / 2;
+    const maxPanY = (stageVideoWrap.clientHeight * (videoZoom - 1)) / 2;
+    videoPanX = clamp(panOriginX + dx, -maxPanX, maxPanX);
+    videoPanY = clamp(panOriginY + dy, -maxPanY, maxPanY);
+    applyVideoTransform(true);
+  }
+});
+
+const handleVideoPointerEnd = (e: PointerEvent) => {
+  const wasSingleTap = activePointers.size === 1 && !gestureMoved;
+  activePointers.delete(e.pointerId);
+  if (activePointers.size === 1) {
+    const remaining = Array.from(activePointers.values())[0];
+    panStartX = remaining.x;
+    panStartY = remaining.y;
+    panOriginX = videoPanX;
+    panOriginY = videoPanY;
+  }
+  applyVideoTransform(false);
+
+  if (wasSingleTap && e.target === videoEl) {
+    if (isStageFullscreen) {
+      player.togglePlay();
+      showFsHudTemporarily();
+    } else {
+      player.togglePlay();
+    }
+  }
+};
+
+stageVideoWrap.addEventListener('pointerup', handleVideoPointerEnd);
+stageVideoWrap.addEventListener('pointercancel', (e) => {
+  activePointers.delete(e.pointerId);
+  applyVideoTransform(false);
+});
 
 function syncModalScrollLock(): void {
   const anyOpen =
@@ -883,26 +1157,39 @@ btnKeepCopy.addEventListener('click', () => {
   setKeepLocalCopy(!keepLocalCopy);
   showToast(
     keepLocalCopy
-      ? 'Keep Copy on: files will be cached offline'
-      : 'Keep Copy off: streaming files with 0 MB cache'
+      ? 'Keep Local Copy: On (files cached offline)'
+      : 'Keep Local Copy: Off (streaming with 0 MB cache)'
   );
 });
 
-btnKeepCopyMenu.addEventListener('click', () => {
-  setKeepLocalCopy(!keepLocalCopy);
-  closeHeaderMenu();
-  showToast(
-    keepLocalCopy
-      ? 'Keep Local Copy: On'
-      : 'Keep Local Copy: Off (Stream Mode)'
-  );
+btnChoiceStream.addEventListener('click', () => {
+  const files = pendingChoiceFiles;
+  const relink = pendingChoiceRelinkId;
+  pendingChoiceFiles = null;
+  pendingChoiceRelinkId = null;
+  storageChoiceBannerEl.classList.add('hidden');
+  closeLibraryModal();
+  if (files) {
+    void processImportedFiles(files, false, relink);
+  }
+});
+
+btnChoiceCopy.addEventListener('click', () => {
+  const files = pendingChoiceFiles;
+  const relink = pendingChoiceRelinkId;
+  pendingChoiceFiles = null;
+  pendingChoiceRelinkId = null;
+  storageChoiceBannerEl.classList.add('hidden');
+  closeLibraryModal();
+  if (files) {
+    void processImportedFiles(files, true, relink);
+  }
 });
 
 const triggerImport = () => {
   closeHeaderMenu();
   fileInput.click();
 };
-$('btn-import-top').addEventListener('click', triggerImport);
 $('btn-import-empty').addEventListener('click', triggerImport);
 $('btn-import-modal').addEventListener('click', triggerImport);
 fileInput.addEventListener('change', () => {
@@ -912,10 +1199,6 @@ fileInput.addEventListener('cancel', () => {
   pendingRelinkTrackId = null;
 });
 
-$('btn-yt-top').addEventListener('click', () => {
-  closeHeaderMenu();
-  openYtModal();
-});
 $('btn-yt-modal').addEventListener('click', () => {
   closeLibraryModal();
   openYtModal();
@@ -984,10 +1267,34 @@ guideModal.addEventListener('click', (e) => {
   if (e.target === guideModal) closeGuideModal();
 });
 
+const restartFromPointA = () => {
+  const snap = player.getSnapshot();
+  player.seekTo(snap.pointA ?? 0);
+};
+
+btnRestartA.addEventListener('click', restartFromPointA);
 btnPlay.addEventListener('click', () => player.togglePlay());
 btnBack5.addEventListener('click', () => player.seekBy(-5));
 btnFwd5.addEventListener('click', () => player.seekBy(5));
 btnCancelCountIn.addEventListener('click', () => player.cancelCountIn());
+
+btnFsRestartA.addEventListener('click', () => {
+  restartFromPointA();
+  showFsHudTemporarily();
+});
+btnFsBack5.addEventListener('click', () => {
+  player.seekBy(-5);
+  showFsHudTemporarily();
+});
+btnFsPlay.addEventListener('click', () => {
+  player.togglePlay();
+  showFsHudTemporarily();
+});
+btnFsLoop.addEventListener('click', () => {
+  player.toggleLoop();
+  showFsHudTemporarily();
+});
+btnFsExit.addEventListener('click', () => setStageFullscreen(false));
 
 btnMirror.addEventListener('click', () => player.toggleMirror());
 
@@ -1003,6 +1310,45 @@ for (const btn of countInButtons) {
 
 btnLoopCountIn.addEventListener('click', () => {
   player.toggleRepeatCountInOnLoop();
+});
+
+let tapTimes: number[] = [];
+let tapResetTimer: number | null = null;
+btnTapBpm.addEventListener('click', () => {
+  const now = performance.now();
+  if (tapTimes.length > 0 && now - tapTimes[tapTimes.length - 1] > 2200) {
+    tapTimes = [];
+  }
+  tapTimes.push(now);
+  if (tapTimes.length > 6) {
+    tapTimes.shift();
+  }
+  btnTapBpm.classList.add('is-tapping');
+  if (tapResetTimer !== null) window.clearTimeout(tapResetTimer);
+  tapResetTimer = window.setTimeout(() => {
+    btnTapBpm.classList.remove('is-tapping');
+  }, 220);
+
+  if (tapTimes.length >= 2) {
+    let totalDiff = 0;
+    for (let i = 1; i < tapTimes.length; i += 1) {
+      totalDiff += tapTimes[i] - tapTimes[i - 1];
+    }
+    const avgMs = totalDiff / (tapTimes.length - 1);
+    if (avgMs > 0) {
+      player.setBpm(Math.round(60000 / avgMs));
+    }
+  }
+});
+
+for (const btn of toneButtons) {
+  btn.addEventListener('click', () => {
+    player.setCountInTone((btn.dataset.tone ?? 'woodblock') as CountInTone);
+  });
+}
+
+countInVolSlider.addEventListener('input', () => {
+  player.setCountInVolume(Number(countInVolSlider.value));
 });
 
 bpmInput.addEventListener('change', () => {
@@ -1044,24 +1390,44 @@ btnAPlus.addEventListener('click', () => player.nudgePointA(nudgeStep));
 btnBMinus.addEventListener('click', () => player.nudgePointB(-nudgeStep));
 btnBPlus.addEventListener('click', () => player.nudgePointB(nudgeStep));
 
+function toggleBookmarkForm(open: boolean): void {
+  bookmarkForm.classList.toggle('hidden', !open);
+  btnSaveBookmark.textContent = open ? 'Cancel' : '+ Save';
+  if (open) {
+    bookmarkNameInput.focus();
+  } else {
+    bookmarkNameInput.value = '';
+  }
+}
+
 btnSaveBookmark.addEventListener('click', () => {
-  bookmarkForm.classList.remove('hidden');
-  bookmarkNameInput.focus();
+  const isOpen = !bookmarkForm.classList.contains('hidden');
+  toggleBookmarkForm(!isOpen);
 });
 
 btnCancelBookmark.addEventListener('click', () => {
-  bookmarkForm.classList.add('hidden');
-  bookmarkNameInput.value = '';
+  toggleBookmarkForm(false);
 });
+
+for (const btn of bookmarkPresetButtons) {
+  btn.addEventListener('click', () => {
+    const label = btn.dataset.bmPreset;
+    if (!label) return;
+    void saveBookmark(label);
+    toggleBookmarkForm(false);
+  });
+}
 
 bookmarkForm.addEventListener('submit', (e) => {
   e.preventDefault();
-  const name = bookmarkNameInput.value.trim();
-  if (!name) return;
+  const nextPartIndex = (activeTrack?.bookmarks.length ?? 0) + 1;
+  const name = bookmarkNameInput.value.trim() || `Part ${nextPartIndex}`;
   void saveBookmark(name);
-  bookmarkNameInput.value = '';
-  bookmarkForm.classList.add('hidden');
+  toggleBookmarkForm(false);
 });
+
+btnSpeedMinus.addEventListener('click', () => player.setSpeed(player.getSnapshot().speed - 0.05));
+btnSpeedPlus.addEventListener('click', () => player.setSpeed(player.getSnapshot().speed + 0.05));
 
 for (const btn of speedButtons) {
   btn.addEventListener('click', () => {
