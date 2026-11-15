@@ -4,27 +4,27 @@
 
 # ChoreoLoop
 
-[![Version: 0.9.1](https://img.shields.io/badge/version-0.9.1-blue.svg)](https://github.com/LycosLane/choreoloop)
-[![Platform: PWA | iOS | Android | Desktop](https://img.shields.io/badge/Platform-PWA%20%7C%20iOS%20%7C%20Android%20%7C%20Desktop-0078D6.svg)](https://github.com/LycosLane/choreoloop)
+[![Free & Open Source](https://img.shields.io/badge/Open%20Source-FOSS-brightgreen.svg)](LICENSE)
+[![Platform: iOS | Android | Desktop](https://img.shields.io/badge/Platform-iOS%20%7C%20Android%20%7C%20Desktop-0078D6.svg)](https://github.com/LycosLane/choreoloop)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 [![Telemetry: Zero](https://img.shields.io/badge/Telemetry-Zero-brightgreen.svg)]()
 [![Ads: None](https://img.shields.io/badge/Ads-None-success.svg)]()
 
-> **Practice choreography on your own terms.**  
-> A fast, offline-first dance practice studio and A-B looper built as a lightweight PWA.  
-> *No account, no ads, and zero tracking.*
+> **Free, open-source dance practice player and A-B looper.**  
+> Load a video or song from your device or YouTube, loop any section from A to B, and practice at your own tempo.  
+> *Works in your browser or as an installed app on iPhone, Android, and desktop. No account, no ads, and zero tracking.*
 
 ---
 
 ## Features
 
-* **Local Files (+ File):** Play audio (`MP3`, `M4A`, `WAV`, `AAC`, `OGG`) and video (`MP4`, `MOV`, `WebM`) directly on your device. Choose between caching a local copy in IndexedDB for instant offline access or streaming large videos with 0 MB browser storage.
+* **Local Files (+ File):** Play audio (`MP3`, `M4A`, `WAV`, `AAC`, `OGG`) and video (`MP4`, `MOV`, `WebM`) directly on your device. Save a local copy in your browser for offline practice, or stream large videos without using extra storage.
 * **YouTube Practice (+ YouTube):** Paste any YouTube link or share directly from the YouTube app on Android to practice with A-B looping, speed presets, and count-in.
-* **A-B Loop Studio:** One-tap `Set A`, `Set B`, `Loop`, `Restart A`, fine-tune steppers (`0.1s`, `0.25s`, `0.5s`), and 1-tap named loop bookmarks (`Intro`, `Verse`, `Chorus`, `Bridge`, `8-Count`, or custom).
-* **Slow-Motion (Pitch Preserved):** Quick presets (`0.5x`, `0.75x`, `0.9x`, `1.0x`), `-5%` / `+5%` steppers, and a continuous slider (`0.25x` to `1.25x`).
-* **Mirror, Zoom & Fullscreen:** Horizontal video mirror (`scaleX(-1)`), 2-finger pinch-to-zoom (`1x` to `3x`) and pan, plus a fullscreen stage with an auto-hiding HUD.
-* **Count-In & Tap Tempo:** Silent visual countdown (`3s` or `5s`) or beat-synced count-in (`1-16` beats) with live **Tap Tempo**, selectable studio percussion (`Wood`, `Click`, `Beep`), volume control, and `Each Loop` repeat.
-* **Studio Ready:** Screen Wake Lock keeps your display awake during breaks, MediaSession supports Bluetooth headphones and remotes, and Light/Dark themes adapt the app icon.
+* **A-B Looping & Bookmarks:** One-tap `Set A`, `Set B`, `Loop`, `Restart A`, fine-tune steppers (`0.1s`, `0.25s`, `0.5s`), and 1-tap named loop bookmarks (`Intro`, `Verse`, `Chorus`, `Bridge`, `8-Count`, or custom).
+* **Practice at Your Tempo:** Slow down or speed up without changing pitch (`0.25x` to `1.25x`) using quick presets (`0.5x`, `0.75x`, `0.9x`, `1.0x`), `-5%` / `+5%` steppers, or the slider.
+* **Mirror, Zoom & Fullscreen:** Flip videos horizontally (`Mirror`) to match your view, pinch with two fingers to zoom (`1x` to `3x`) and pan, or switch to fullscreen with auto-hiding controls.
+* **Count-In & Tap Tempo:** Silent visual countdown (`3s` or `5s`) or beat-synced count-in (`1-16` beats) with live **Tap Tempo**, selectable count-in sounds (`Wood`, `Click`, `Beep`), volume control, and `Each Loop` repeat.
+* **Built for Practice:** Keeps your screen awake during breaks, supports Bluetooth headphones and remotes, and adapts the app icon to Light or Dark mode.
 
 ---
 
@@ -44,7 +44,7 @@
 * **iPhone / iPad (Safari):** Tap **Share** -> **Add to Home Screen**.
 * **Android (Chrome / Samsung Internet):** Tap browser **Menu** -> **Install app** / **Add to Home screen**.
 * **Icon Tip:** Switch between Dark Mode (White Fedora) and Light Mode (Black Fedora) before saving to your Home Screen.
-* **Offline Tip:** Refresh once while online before heading into a studio without mobile data. Your local library and bookmarks are never deleted on refresh.
+* **Offline Tip:** Refresh once while online before heading to dance class or rehearsal without mobile data. Your local library and bookmarks are never deleted on refresh.
 
 ---
 
@@ -52,7 +52,7 @@
 
 * **100% Private:** Nothing is uploaded to any server. All files, loops, and settings stay inside your browser's local storage.
 * **Original Files Untouched:** Removing a track in ChoreoLoop only deletes ChoreoLoop's entry or cached copy. Your original file on your phone or SD card is never modified or deleted.
-* **Keep Copy vs. Stream Mode:** For large files (> 250 MB) or caches (> 500 MB), ChoreoLoop lets you stream with 0 MB cache. Due to iOS and Android browser security, streamed files must be re-selected after an app restart, while your saved loops and settings auto-restore automatically.
+* **Keep Copy vs. Stream Mode:** For large files (> 250 MB) or caches (> 500 MB), ChoreoLoop lets you stream with 0 MB cache. Due to iOS and Android browser security, streamed files must be re-selected after an app restart, while your saved loops and settings restore automatically.
 
 ---
 
