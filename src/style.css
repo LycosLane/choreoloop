@@ -300,7 +300,6 @@ button:focus-visible,
 
 .btn-lg {
   font-size: 15px;
-  margin-top: 4px;
 }
 
 .empty-cta-row {
@@ -310,13 +309,6 @@ button:focus-visible,
   justify-content: center;
   flex-wrap: wrap;
   margin-top: 4px;
-}
-
-.btn-lg-pill {
-  min-height: 48px;
-  padding: 0 18px;
-  border-radius: var(--radius-md);
-  font-size: 15px;
 }
 
 .stage-video-wrap {
