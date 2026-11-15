@@ -56,9 +56,8 @@ export class ChoreoPlayer {
 
   private rafId: number | null = null;
   private countInTimerId: number | null = null;
+  private ytPlayVerifyTimerId: number | null = null;
   private ytLoadSeq = 0;
-  private ytCountInResumeTime: number | null = null;
-  private ytWasMutedBeforeCountIn = false;
   private isLoopSeeking = false;
   private loopSeekUntilMs = 0;
 
@@ -198,15 +197,18 @@ export class ChoreoPlayer {
             }
             const state = e.data;
             if (state === YT.PlayerState.PLAYING) {
+              this.clearYtPlayVerifyTimer();
               this.ytPlaying = true;
               e.target.setPlaybackRate(this.speed);
               this.startLoopMonitor();
               this.emitState();
             } else if (state === YT.PlayerState.PAUSED || state === YT.PlayerState.CUED) {
+              this.clearYtPlayVerifyTimer();
               this.ytPlaying = false;
               this.stopLoopMonitor();
               this.emitState();
             } else if (state === YT.PlayerState.ENDED) {
+              this.clearYtPlayVerifyTimer();
               if (this.loopEnabled && this.pointA !== null) {
                 e.target.seekTo(this.pointA, true);
                 e.target.playVideo();
@@ -253,6 +255,7 @@ export class ChoreoPlayer {
   private cleanupActiveMedia(): void {
     this.cancelCountIn();
     this.stopLoopMonitor();
+    this.clearYtPlayVerifyTimer();
     this.isLoopSeeking = false;
 
     this.videoEl.pause();
@@ -309,7 +312,11 @@ export class ChoreoPlayer {
 
   private pauseNow(): void {
     if (this.activeKind === 'youtube') {
+      this.clearYtPlayVerifyTimer();
+      this.ytPlaying = false;
+      this.stopLoopMonitor();
       this.ytPlayer?.pauseVideo();
+      this.emitState();
       return;
     }
     this.activeHtmlMedia?.pause();
@@ -343,20 +350,35 @@ export class ChoreoPlayer {
     }
 
     if (this.activeKind === 'youtube') {
-      if (!this.ytReady || !this.ytPlayer) return;
-      if (this.ytCountInResumeTime !== null) {
-        const targetTime = this.ytCountInResumeTime;
-        this.ytCountInResumeTime = null;
-        this.ytPlayer.seekTo(targetTime, true);
-        if (!this.ytWasMutedBeforeCountIn) {
-          this.ytPlayer.unMute();
-        }
+      if (!this.ytReady || !this.ytPlayer) {
+        this.callbacks.onError(
+          'YouTube player is still loading (or blocked by browser Shields).'
+        );
+        return;
       }
       this.ytPlayer.playVideo();
       this.ytPlayer.setPlaybackRate(this.speed);
       this.ytPlaying = true;
       this.startLoopMonitor();
       this.emitState();
+
+      this.clearYtPlayVerifyTimer();
+      this.ytPlayVerifyTimerId = window.setTimeout(() => {
+        this.ytPlayVerifyTimerId = null;
+        if (this.activeKind !== 'youtube' || !this.ytPlaying || this.countInRemaining !== null) {
+          return;
+        }
+        const st = this.ytPlayer?.getPlayerState();
+        // 1 = PLAYING, 3 = BUFFERING
+        if (st !== 1 && st !== 3) {
+          this.ytPlaying = false;
+          this.stopLoopMonitor();
+          this.emitState();
+          this.callbacks.onError(
+            'Browser blocked YouTube playback. Tap the video once, or check Brave Shields.'
+          );
+        }
+      }, 1200);
       return;
     }
 
@@ -369,6 +391,19 @@ export class ChoreoPlayer {
   }
 
   private startCountIn(): void {
+    if (this.activeKind === 'youtube') {
+      if (!this.ytReady || !this.ytPlayer) {
+        this.callbacks.onError(
+          'YouTube player is still loading (or blocked by browser Shields).'
+        );
+        return;
+      }
+      this.clearYtPlayVerifyTimer();
+      this.ytPlaying = false;
+      this.stopLoopMonitor();
+      this.ytPlayer.pauseVideo();
+    }
+
     const cur = this.getCurrentTimeInternal();
     const shouldStartAtA =
       this.loopEnabled &&
@@ -382,14 +417,8 @@ export class ChoreoPlayer {
       this.emitTime();
     }
 
-    // Unlock HTML media element or YouTube iframe on iOS/Android within user gesture
-    if (this.activeKind === 'youtube' && this.ytReady && this.ytPlayer) {
-      this.ytCountInResumeTime = shouldStartAtA && this.pointA !== null ? this.pointA : cur;
-      this.ytWasMutedBeforeCountIn = this.ytPlayer.isMuted();
-      // Keep YouTube iframe playing muted during count-in so mobile browsers preserve the user gesture unlock
-      this.ytPlayer.mute();
-      this.ytPlayer.playVideo();
-    } else {
+    // Unlock HTML media element on iOS/Android within user gesture
+    if (this.activeKind !== 'youtube') {
       const media = this.activeHtmlMedia;
       if (media) {
         const wasMuted = media.muted;
@@ -448,16 +477,16 @@ export class ChoreoPlayer {
     this.countInRemaining = null;
     if (this.activeKind === 'youtube' && this.ytPlayer) {
       this.ytPlayer.pauseVideo();
-      if (!this.ytWasMutedBeforeCountIn) {
-        this.ytPlayer.unMute();
-      }
-      if (this.ytCountInResumeTime !== null) {
-        this.ytPlayer.seekTo(this.ytCountInResumeTime, true);
-        this.ytCountInResumeTime = null;
-      }
       this.ytPlaying = false;
     }
     this.emitState();
+  }
+
+  private clearYtPlayVerifyTimer(): void {
+    if (this.ytPlayVerifyTimerId !== null) {
+      window.clearTimeout(this.ytPlayVerifyTimerId);
+      this.ytPlayVerifyTimerId = null;
+    }
   }
 
   private clearCountInTimer(): void {
