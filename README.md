@@ -14,6 +14,8 @@
 > Load a video or song from your device or YouTube, loop any section from A to B, and practice at your own tempo.  
 > *Works in your browser or as an installed app on iPhone, Android, and desktop. No account, no ads, and zero tracking.*
 
+**Open the App:** https://lycoslane.github.io/choreoloop/
+
 ---
 
 ## Features
