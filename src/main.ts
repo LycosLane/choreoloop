@@ -842,13 +842,13 @@ function syncModalScrollLock(): void {
   document.body.style.overflow = anyOpen ? 'hidden' : '';
 }
 
-function openShareModal(): void {
+async function openShareModal(): Promise<void> {
   if (!activeTrack) return;
   const isYt = activeTrack.mediaKind === 'youtube' && Boolean(activeTrack.youtubeId);
   shareYtSection.classList.toggle('hidden', !isYt);
 
   if (isYt) {
-    shareLinkInput.value = encodeShareUrl(activeTrack);
+    shareLinkInput.value = await encodeShareUrl(activeTrack);
     shareSummaryChips.innerHTML = '';
     const chips: string[] = [
       'YouTube',
@@ -858,6 +858,9 @@ function openShareModal(): void {
         : 'No A-B range',
       `${activeTrack.bookmarks.length} Bookmark${activeTrack.bookmarks.length === 1 ? '' : 's'}`,
     ];
+    if (activeTrack.lyrics && activeTrack.lyrics.lines.length > 0) {
+      chips.push(`Lyrics (${activeTrack.lyrics.lines.length} lines)`);
+    }
     if (activeTrack.settings.countInEnabled) {
       chips.push(
         activeTrack.settings.countInMode === 'beats'
@@ -1308,7 +1311,9 @@ const lyricsController = createLyricsController({
   onToast: (msg) => showToast(msg),
 });
 
-btnShareOpen.addEventListener('click', openShareModal);
+btnShareOpen.addEventListener('click', () => {
+  void openShareModal();
+});
 $<HTMLButtonElement>('btn-close-share').addEventListener('click', closeShareModal);
 shareModal.addEventListener('click', (e) => {
   if (e.target === shareModal) closeShareModal();
@@ -1443,14 +1448,17 @@ if ('serviceWorker' in navigator && !import.meta.env.DEV) {
   });
 }
 
-// Handle #share=... practice setup links, ?yt=..., or Android PWA share_target
+// Handle #share=... / #sharez=... practice setup links, ?yt=..., or Android PWA share_target
 async function checkIncomingSharedLink(): Promise<boolean> {
-  const shared = decodeShareHash(window.location.hash);
+  const shared = await decodeShareHash(window.location.hash);
   if (shared) {
     window.history.replaceState({}, '', window.location.pathname);
     const meta = await saveYouTubeTrack(shared.youtubeId, shared.name);
     meta.settings = { ...meta.settings, ...shared.settings };
     meta.bookmarks = shared.bookmarks;
+    if (shared.lyrics) {
+      meta.lyrics = shared.lyrics;
+    }
     if (typeof shared.lyricsOffset === 'number' && meta.lyrics) {
       meta.lyrics.globalOffset = shared.lyricsOffset;
     }

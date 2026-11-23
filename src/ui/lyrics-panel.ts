@@ -60,6 +60,7 @@ export function createLyricsController(deps: LyricsControllerDeps): LyricsContro
 
   const syncBar = el<HTMLDivElement>('lyrics-sync-bar');
   const nudgeReadout = el<HTMLSpanElement>('lyrics-nudge-readout');
+  const btnDeleteLine = el<HTMLButtonElement>('btn-lyrics-delete-line');
   const btnNudgeReset = el<HTMLButtonElement>('btn-lyrics-nudge-reset');
   const btnClear = el<HTMLButtonElement>('btn-lyrics-clear');
 
@@ -410,6 +411,30 @@ export function createLyricsController(deps: LyricsControllerDeps): LyricsContro
         void applyNudge(delta);
       }
     });
+  });
+
+  btnDeleteLine.addEventListener('click', async () => {
+    const track = deps.getActiveTrack();
+    if (!track?.lyrics || track.lyrics.lines.length === 0) return;
+
+    const targetIdx = Math.min(
+      Math.max(0, activeLineIdx >= 0 ? activeLineIdx : selectedLineIdx),
+      track.lyrics.lines.length - 1
+    );
+    track.lyrics.lines.splice(targetIdx, 1);
+    if (track.lyrics.lines.length === 0) {
+      delete track.lyrics;
+      activeLineIdx = -1;
+      selectedLineIdx = 0;
+    } else {
+      track.lyrics.updatedAt = Date.now();
+      selectedLineIdx = Math.min(targetIdx, track.lyrics.lines.length - 1);
+      activeLineIdx = findActiveLyricIndex(track.lyrics, deps.getCurrentTime());
+    }
+
+    await deps.onSaveTrack(track);
+    renderLyricsList();
+    deps.onToast('Line deleted (other timestamps kept).');
   });
 
   btnNudgeReset.addEventListener('click', async () => {

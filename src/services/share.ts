@@ -27,6 +27,11 @@ interface CompactSharePayload {
   };
   bm?: Array<[string, number, number]>;
   lo?: number;
+  ly?: {
+    s: TrackLyrics['source'];
+    go: number;
+    l: Array<[number, number, string]>;
+  };
 }
 
 export interface LocalSetupExport {
@@ -40,8 +45,7 @@ export interface LocalSetupExport {
   lyrics?: TrackLyrics;
 }
 
-function toBase64Url(str: string): string {
-  const bytes = new TextEncoder().encode(str);
+function bytesToBase64Url(bytes: Uint8Array): string {
   let bin = '';
   for (const b of bytes) {
     bin += String.fromCharCode(b);
@@ -49,7 +53,7 @@ function toBase64Url(str: string): string {
   return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-function fromBase64Url(b64url: string): string {
+function base64UrlToBytes(b64url: string): Uint8Array {
   const padLen = (4 - (b64url.length % 4)) % 4;
   const b64 = b64url.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat(padLen);
   const bin = atob(b64);
@@ -57,13 +61,44 @@ function fromBase64Url(b64url: string): string {
   for (let i = 0; i < bin.length; i++) {
     bytes[i] = bin.charCodeAt(i);
   }
-  return new TextDecoder().decode(bytes);
+  return bytes;
+}
+
+function toBase64Url(str: string): string {
+  return bytesToBase64Url(new TextEncoder().encode(str));
+}
+
+function fromBase64Url(b64url: string): string {
+  return new TextDecoder().decode(base64UrlToBytes(b64url));
+}
+
+async function compressString(str: string): Promise<string | null> {
+  if (typeof CompressionStream === 'undefined') return null;
+  try {
+    const stream = new Blob([str]).stream().pipeThrough(new CompressionStream('deflate-raw'));
+    const buf = await new Response(stream).arrayBuffer();
+    return bytesToBase64Url(new Uint8Array(buf));
+  } catch {
+    return null;
+  }
+}
+
+async function decompressString(b64url: string): Promise<string | null> {
+  if (typeof DecompressionStream === 'undefined') return null;
+  try {
+    const bytes = base64UrlToBytes(b64url);
+    const ab = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
+    const stream = new Blob([ab]).stream().pipeThrough(new DecompressionStream('deflate-raw'));
+    return await new Response(stream).text();
+  } catch {
+    return null;
+  }
 }
 
 /**
- * Encodes a YouTube track's full practice setup into a self-contained #share= URL.
+ * Encodes a YouTube track's full practice setup (including lyrics) into a #share= / #sharez= URL.
  */
-export function encodeShareUrl(track: TrackMetadata): string {
+export async function encodeShareUrl(track: TrackMetadata): Promise<string> {
   if (track.mediaKind !== 'youtube' || !track.youtubeId) {
     throw new Error('Share links are available for YouTube tracks.');
   }
@@ -93,30 +128,50 @@ export function encodeShareUrl(track: TrackMetadata): string {
     ]),
   };
 
-  if (track.lyrics && track.lyrics.globalOffset !== 0) {
+  if (track.lyrics && track.lyrics.lines.length > 0) {
     payload.lo = track.lyrics.globalOffset;
+    payload.ly = {
+      s: track.lyrics.source,
+      go: track.lyrics.globalOffset,
+      l: track.lyrics.lines.map((line) => [
+        line.baseTime,
+        line.offset,
+        line.text,
+      ]),
+    };
   }
 
-  const encoded = toBase64Url(JSON.stringify(payload));
-  return `${window.location.origin}${window.location.pathname}#share=${encoded}`;
+  const json = JSON.stringify(payload);
+  const compressed = await compressString(json);
+  const base = `${window.location.origin}${window.location.pathname}`;
+  if (compressed && compressed.length < toBase64Url(json).length) {
+    return `${base}#sharez=${compressed}`;
+  }
+  return `${base}#share=${toBase64Url(json)}`;
 }
 
 /**
- * Decodes an incoming #share=... URL hash into track settings and bookmarks.
+ * Decodes an incoming #share=... or #sharez=... URL hash into track settings, bookmarks, and lyrics.
  */
-export function decodeShareHash(hash: string): {
+export async function decodeShareHash(hash: string): Promise<{
   youtubeId: string;
   name?: string;
   settings: Partial<TrackSettings>;
   bookmarks: LoopBookmark[];
+  lyrics?: TrackLyrics;
   lyricsOffset?: number;
-} | null {
-  if (!hash.startsWith('#share=')) return null;
-  const raw = hash.slice('#share='.length).trim();
+} | null> {
+  const isCompressed = hash.startsWith('#sharez=');
+  const isPlain = hash.startsWith('#share=');
+  if (!isCompressed && !isPlain) return null;
+
+  const raw = hash.slice(isCompressed ? '#sharez='.length : '#share='.length).trim();
   if (!raw) return null;
 
   try {
-    const parsed = JSON.parse(fromBase64Url(raw)) as CompactSharePayload;
+    const jsonText = isCompressed ? await decompressString(raw) : fromBase64Url(raw);
+    if (!jsonText) return null;
+    const parsed = JSON.parse(jsonText) as CompactSharePayload;
     if (!parsed || parsed.v !== 1 || typeof parsed.yt !== 'string' || !parsed.yt) {
       return null;
     }
@@ -157,11 +212,33 @@ export function decodeShareHash(hash: string): {
       settings.countInVolume = parsed.ci.v;
     }
 
+    let lyrics: TrackLyrics | undefined;
+    if (parsed.ly && Array.isArray(parsed.ly.l) && parsed.ly.l.length > 0) {
+      const lines = parsed.ly.l
+        .filter(
+          (item): item is [number, number, string] =>
+            Array.isArray(item) &&
+            typeof item[0] === 'number' &&
+            typeof item[1] === 'number' &&
+            typeof item[2] === 'string'
+        )
+        .map(([baseTime, offset, text]) => ({ baseTime, offset, text }));
+      if (lines.length > 0) {
+        lyrics = {
+          lines,
+          globalOffset: typeof parsed.ly.go === 'number' ? parsed.ly.go : 0,
+          source: parsed.ly.s ?? 'lrc',
+          updatedAt: Date.now(),
+        };
+      }
+    }
+
     return {
       youtubeId: parsed.yt,
       name: typeof parsed.n === 'string' ? parsed.n : undefined,
       settings,
       bookmarks,
+      lyrics,
       lyricsOffset: typeof parsed.lo === 'number' ? parsed.lo : undefined,
     };
   } catch {
