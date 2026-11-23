@@ -144,10 +144,35 @@ export async function encodeShareUrl(track: TrackMetadata): Promise<string> {
   const json = JSON.stringify(payload);
   const compressed = await compressString(json);
   const base = `${window.location.origin}${window.location.pathname}`;
-  if (compressed && compressed.length < toBase64Url(json).length) {
-    return `${base}#sharez=${compressed}`;
+  const longUrl =
+    compressed && compressed.length < toBase64Url(json).length
+      ? `${base}#sharez=${compressed}`
+      : `${base}#share=${toBase64Url(json)}`;
+
+  const shortenerUrl = (import.meta.env.VITE_SHORTENER_URL as string | undefined)?.trim();
+  if (shortenerUrl) {
+    try {
+      const controller = new AbortController();
+      const timer = window.setTimeout(() => controller.abort(), 2500);
+      const res = await fetch(shortenerUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: longUrl }),
+        signal: controller.signal,
+      });
+      window.clearTimeout(timer);
+      if (res.ok) {
+        const data = (await res.json()) as { shortUrl?: unknown };
+        if (typeof data.shortUrl === 'string' && /^https?:\/\//i.test(data.shortUrl)) {
+          return data.shortUrl;
+        }
+      }
+    } catch {
+      // Fallback to self-contained #sharez= URL
+    }
   }
-  return `${base}#share=${toBase64Url(json)}`;
+
+  return longUrl;
 }
 
 /**

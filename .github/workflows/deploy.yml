@@ -39,3 +39,26 @@ jobs:
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4
+
+  deploy-samurainami:
+    if: ${{ vars.SAMURAINAMI_DEPLOY == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+        env:
+          VITE_BRAND: samurainami
+          VITE_SHORTENER_URL: ./s.php
+      - uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.HOSTPOINT_FTP_SERVER }}
+          username: ${{ secrets.HOSTPOINT_FTP_USERNAME }}
+          password: ${{ secrets.HOSTPOINT_FTP_PASSWORD }}
+          server-dir: ${{ vars.HOSTPOINT_FTP_DIR || '/' }}
+          local-dir: ./dist/
+          dangerous-clean-slate: false

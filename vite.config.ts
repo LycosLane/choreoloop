@@ -7,6 +7,17 @@ function injectSwAssetsPlugin(): Plugin {
     name: 'inject-sw-assets',
     closeBundle() {
       const distDir = path.resolve(__dirname, 'dist');
+      const brand = process.env.VITE_BRAND?.trim();
+      if (brand && brand !== 'choreoloop') {
+        const brandIconsDir = path.resolve(__dirname, 'brands', brand, 'icons');
+        const distIconsDir = path.join(distDir, 'icons');
+        if (fs.existsSync(brandIconsDir) && fs.existsSync(distIconsDir)) {
+          for (const file of fs.readdirSync(brandIconsDir)) {
+            fs.copyFileSync(path.join(brandIconsDir, file), path.join(distIconsDir, file));
+          }
+        }
+      }
+
       const assetsDir = path.join(distDir, 'assets');
       const swPath = path.join(distDir, 'sw.js');
       if (!fs.existsSync(swPath) || !fs.existsSync(assetsDir)) return;
