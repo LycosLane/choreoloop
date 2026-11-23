@@ -1,7 +1,7 @@
-# Protect SQLite database file from direct HTTP download
-<Files "links.sqlite">
+# Protect SQLite database and journal/WAL files from direct HTTP download
+<FilesMatch "\.(sqlite|sqlite3|db)(-(journal|wal|shm))?$">
   Require all denied
-</Files>
+</FilesMatch>
 
 # Route https://loop.samurainami.com/?s=<code> to s.php while keeping index.html untouched
 RewriteEngine On

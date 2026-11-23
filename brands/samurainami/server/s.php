@@ -4,12 +4,15 @@ declare(strict_types=1);
 /**
  * Self-contained SQLite URL shortener for loop.samurainami.com.
  * - Stores all short links in a single SQLite file (links.sqlite).
- * - Automatically deletes links unused for more than 365 days.
+ * - Automatically deletes links unused for more than 365 days and caps total rows at MAX_LINKS.
  * - Restricts targets to this app's #share= / #sharez= URLs to prevent abuse.
  */
 
 const DB_PATH = __DIR__ . '/links.sqlite';
 const MAX_AGE_SECONDS = 365 * 86400;
+const MAX_LINKS = 10000;
+const MAX_BODY_BYTES = 20480;
+const ALLOWED_ORIGIN = 'https://loop.samurainami.com';
 const ALLOWED_URL_PATTERN = '/^https:\/\/loop\.samurainami\.com\/#sharez?=[A-Za-z0-9_-]+$/';
 
 function getDb(): PDO {
@@ -17,6 +20,7 @@ function getDb(): PDO {
         PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
     ]);
+    $pdo->exec('PRAGMA busy_timeout = 3000;');
     $pdo->exec(
         'CREATE TABLE IF NOT EXISTS links (
             id TEXT PRIMARY KEY,
@@ -25,6 +29,8 @@ function getDb(): PDO {
             last_accessed INTEGER NOT NULL
         )'
     );
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_links_url ON links(url)');
+    $pdo->exec('CREATE INDEX IF NOT EXISTS idx_links_last_accessed ON links(last_accessed)');
     return $pdo;
 }
 
@@ -38,7 +44,10 @@ function generateCode(int $len = 7): string {
     return $out;
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['s'])) {
+$method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+
+if (($method === 'GET' || $method === 'HEAD') && isset($_GET['s'])) {
+    header('Cache-Control: no-store');
     $code = preg_replace('/[^a-zA-Z0-9]/', '', (string) $_GET['s']);
     if ($code !== '') {
         try {
@@ -47,8 +56,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['s'])) {
             $stmt->execute([':id' => $code]);
             $row = $stmt->fetch();
             if ($row && is_string($row['url']) && preg_match(ALLOWED_URL_PATTERN, $row['url']) === 1) {
-                $upd = $pdo->prepare('UPDATE links SET last_accessed = :now WHERE id = :id');
-                $upd->execute([':now' => time(), ':id' => $code]);
+                if ($method === 'GET') {
+                    $upd = $pdo->prepare('UPDATE links SET last_accessed = :now WHERE id = :id');
+                    $upd->execute([':now' => time(), ':id' => $code]);
+                }
                 header('Location: ' . $row['url'], true, 302);
                 exit;
             }
@@ -60,10 +71,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['s'])) {
     exit;
 }
 
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+if ($method === 'POST') {
     header('Content-Type: application/json; charset=utf-8');
-    $raw = file_get_contents('php://input');
-    $body = json_decode($raw ?: '', true);
+    header('Cache-Control: no-store');
+
+    $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
+    if ($origin !== '' && $origin !== ALLOWED_ORIGIN) {
+        http_response_code(403);
+        echo json_encode(['error' => 'Forbidden origin']);
+        exit;
+    }
+
+    $contentLen = isset($_SERVER['CONTENT_LENGTH']) ? (int) $_SERVER['CONTENT_LENGTH'] : 0;
+    if ($contentLen > MAX_BODY_BYTES) {
+        http_response_code(413);
+        echo json_encode(['error' => 'Payload too large']);
+        exit;
+    }
+
+    $raw = file_get_contents('php://input', false, null, 0, MAX_BODY_BYTES + 1);
+    if ($raw === false || strlen($raw) > MAX_BODY_BYTES) {
+        http_response_code(413);
+        echo json_encode(['error' => 'Payload too large']);
+        exit;
+    }
+
+    $body = json_decode($raw, true);
     $url = is_array($body) && isset($body['url']) && is_string($body['url']) ? trim($body['url']) : '';
 
     if ($url === '' || strlen($url) > 16384 || preg_match(ALLOWED_URL_PATTERN, $url) !== 1) {
@@ -89,12 +122,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $code = $existing['id'];
             $pdo->prepare('UPDATE links SET last_accessed = :now WHERE id = :id')->execute([':now' => $now, ':id' => $code]);
         } else {
-            $code = generateCode(7);
+            // Cap total stored links to prevent unbounded disk usage
+            $count = (int) $pdo->query('SELECT COUNT(*) FROM links')->fetchColumn();
+            if ($count >= MAX_LINKS) {
+                $excess = $count - MAX_LINKS + 1;
+                $pdo->prepare(
+                    'DELETE FROM links WHERE id IN (SELECT id FROM links ORDER BY last_accessed ASC LIMIT :limit)'
+                )->execute([':limit' => $excess]);
+            }
+
+            $code = '';
             $ins = $pdo->prepare('INSERT INTO links (id, url, created_at, last_accessed) VALUES (:id, :url, :now, :now)');
-            $ins->execute([':id' => $code, ':url' => $url, ':now' => $now]);
+            for ($attempt = 0; $attempt < 3; $attempt++) {
+                $candidate = generateCode(7);
+                try {
+                    $ins->execute([':id' => $candidate, ':url' => $url, ':now' => $now]);
+                    $code = $candidate;
+                    break;
+                } catch (PDOException $e) {
+                    if ($attempt === 2) throw $e;
+                }
+            }
         }
 
-        echo json_encode(['shortUrl' => 'https://loop.samurainami.com/?s=' . $code]);
+        echo json_encode(['shortUrl' => ALLOWED_ORIGIN . '/?s=' . $code]);
         exit;
     } catch (Throwable $e) {
         http_response_code(500);
