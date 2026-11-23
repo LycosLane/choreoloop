@@ -1558,3 +1558,262 @@ button:focus-visible,
   color: var(--cyan);
   text-decoration: underline;
 }
+
+/* Synced Lyrics Card & Teleprompter */
+.lyrics-subdrawer {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lyrics-find-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.lyrics-find-row .text-input {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.lyrics-paste-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lyrics-textarea {
+  resize: vertical;
+  min-height: 68px;
+  font-family: inherit;
+}
+
+.lyrics-paste-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.lyrics-results {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.lyrics-result-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+
+.lyrics-result-item:hover {
+  border-color: var(--cyan);
+}
+
+.lyrics-result-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lyrics-result-meta {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  color: var(--cyan);
+}
+
+.lyrics-sync-top,
+.lyrics-sync-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.lyrics-nudge-readout {
+  color: var(--cyan);
+  font-size: 12px;
+}
+
+.lyrics-nudge-btns {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.lyrics-empty {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-muted);
+}
+
+.lyrics-list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-height: 184px;
+  overflow-y: auto;
+  padding-right: 2px;
+}
+
+.lyric-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.lyric-row:hover {
+  background: var(--card);
+}
+
+.lyric-row.is-active {
+  background: var(--cyan-soft);
+  border-color: var(--cyan);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.lyric-row.is-selected:not(.is-active) {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.lyric-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lyric-time {
+  flex-shrink: 0;
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+.lyrics-fs-lock {
+  overflow: hidden;
+}
+
+.lyrics-fs-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: #101216;
+  color: #eceff4;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: calc(16px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom));
+}
+
+.lyrics-fs-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.lyrics-fs-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #94a3b8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lyrics-fs-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 16px;
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 12px;
+}
+
+.lyrics-fs-line.is-prev {
+  font-size: 16px;
+  color: #64748b;
+}
+
+.lyrics-fs-line.is-curr {
+  font-size: clamp(24px, 5vw, 38px);
+  font-weight: 800;
+  line-height: 1.25;
+  color: #ffffff;
+}
+
+.lyrics-fs-line.is-next {
+  font-size: 18px;
+  color: #94a3b8;
+}
+
+.lyrics-fs-hud {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* Share Modal */
+.share-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.share-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.share-chip {
+  font-size: 11.5px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--cyan-soft);
+  color: var(--cyan);
+  font-weight: 600;
+}
+
+.share-json-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

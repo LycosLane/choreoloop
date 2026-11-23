@@ -27,6 +27,20 @@ export interface TrackSettings {
   loopEnabled: boolean;
 }
 
+export interface LyricLine {
+  baseTime: number;
+  offset: number;
+  text: string;
+}
+
+export interface TrackLyrics {
+  lines: LyricLine[];
+  globalOffset: number;
+  source: 'lrclib' | 'lrc' | 'plain';
+  query?: string;
+  updatedAt: number;
+}
+
 export interface TrackMetadata {
   id: string;
   name: string;
@@ -42,6 +56,7 @@ export interface TrackMetadata {
   updatedAt: number;
   bookmarks: LoopBookmark[];
   settings: TrackSettings;
+  lyrics?: TrackLyrics;
 }
 
 export interface TrackMediaRecord {

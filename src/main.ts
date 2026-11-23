@@ -14,10 +14,17 @@ import {
 } from './db';
 import { ChoreoPlayer, type PlayerStateSnapshot } from './player';
 import { createMediaSessionSync } from './services/media-session';
+import {
+  decodeShareHash,
+  encodeShareUrl,
+  exportTrackSetupJson,
+  parseTrackSetupJson,
+} from './services/share';
 import { createTapTempo } from './services/tap-tempo';
 import { createWakeLockController } from './services/wake-lock';
 import type { CountInMode, CountInTone, LoopBookmark, TrackMetadata } from './types';
 import { renderLibraryDrawer } from './ui/library-drawer';
+import { createLyricsController } from './ui/lyrics-panel';
 import { initVideoGestures } from './ui/video-gesture';
 import { clamp, formatBytes, formatTime, generateId } from './utils';
 import { extractYouTubeId } from './youtube';
@@ -136,6 +143,17 @@ const ytMirrorNoteEl = $<HTMLParagraphElement>('yt-mirror-note');
 const ytSpeedNoteEl = $<HTMLParagraphElement>('yt-speed-note');
 
 const guideModal = $<HTMLDivElement>('guide-modal');
+
+const btnShareOpen = $<HTMLButtonElement>('btn-share-open');
+const shareModal = $<HTMLDivElement>('share-modal');
+const shareYtSection = $<HTMLDivElement>('share-yt-section');
+const shareSummaryChips = $<HTMLDivElement>('share-summary-chips');
+const shareLinkInput = $<HTMLInputElement>('share-link-input');
+const btnCopyShare = $<HTMLButtonElement>('btn-copy-share');
+const btnNativeShare = $<HTMLButtonElement>('btn-native-share');
+const btnExportJson = $<HTMLButtonElement>('btn-export-json');
+const btnImportJson = $<HTMLButtonElement>('btn-import-json');
+const setupJsonInput = $<HTMLInputElement>('setup-json-input');
 
 const libraryModal = $<HTMLDivElement>('library-modal');
 const libraryListEl = $<HTMLDivElement>('library-list');
@@ -463,6 +481,13 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
 
   renderTimeline(snap.currentTime, snap.duration);
   renderBookmarks();
+  btnShareOpen.classList.toggle('hidden', !activeTrack);
+  lyricsController.onPlayerStateUpdate(
+    snap.isPlaying,
+    snap.loopEnabled,
+    snap.pointA !== null
+  );
+  lyricsController.onTimeUpdate(snap.currentTime);
   wakeLock.sync(hasMedia);
   mediaSession.sync(snap, activeTrack?.name ?? null);
 }
@@ -473,6 +498,7 @@ function renderTimeline(currentTime: number, duration: number): void {
 
   timeCurrentEl.textContent = formatTime(currentTime);
   audioTimecodeEl.textContent = formatTime(currentTime);
+  lyricsController.onTimeUpdate(currentTime);
   timeDurationEl.textContent = formatTime(dur);
 
   const pct = dur > 0 ? clamp((currentTime / dur) * 100, 0, 100) : 0;
@@ -590,6 +616,7 @@ async function selectTrack(id: string, allowPrompt = true): Promise<void> {
     trackTitleEl.textContent = meta.name;
     audioTrackNameEl.textContent = meta.name;
     await player.loadYouTube(meta.youtubeId, meta.settings);
+    lyricsController.onTrackChanged(activeTrack);
     renderLibrary();
     return;
   }
@@ -613,6 +640,7 @@ async function selectTrack(id: string, allowPrompt = true): Promise<void> {
   trackTitleEl.textContent = meta.name;
   audioTrackNameEl.textContent = meta.name;
   player.loadMedia(mediaSource, meta.mediaKind === 'video' ? 'video' : 'audio', meta.settings);
+  lyricsController.onTrackChanged(activeTrack);
   renderLibrary();
 }
 
@@ -715,6 +743,7 @@ async function handleDeleteTrack(id: string): Promise<void> {
     activeTrack = null;
     trackTitleEl.textContent = 'No track loaded';
     player.unload();
+    lyricsController.onTrackChanged(null);
   }
   await refreshTrackList();
   if (!activeTrack && tracks.length > 0) {
@@ -808,8 +837,50 @@ function syncModalScrollLock(): void {
   const anyOpen =
     !ytModal.classList.contains('hidden') ||
     !libraryModal.classList.contains('hidden') ||
-    !guideModal.classList.contains('hidden');
+    !guideModal.classList.contains('hidden') ||
+    !shareModal.classList.contains('hidden');
   document.body.style.overflow = anyOpen ? 'hidden' : '';
+}
+
+function openShareModal(): void {
+  if (!activeTrack) return;
+  const isYt = activeTrack.mediaKind === 'youtube' && Boolean(activeTrack.youtubeId);
+  shareYtSection.classList.toggle('hidden', !isYt);
+
+  if (isYt) {
+    shareLinkInput.value = encodeShareUrl(activeTrack);
+    shareSummaryChips.innerHTML = '';
+    const chips: string[] = [
+      'YouTube',
+      `${activeTrack.settings.speed.toFixed(2)}x`,
+      activeTrack.settings.pointA !== null && activeTrack.settings.pointB !== null
+        ? `Loop ${formatTime(activeTrack.settings.pointA).slice(0, 5)} - ${formatTime(activeTrack.settings.pointB).slice(0, 5)}`
+        : 'No A-B range',
+      `${activeTrack.bookmarks.length} Bookmark${activeTrack.bookmarks.length === 1 ? '' : 's'}`,
+    ];
+    if (activeTrack.settings.countInEnabled) {
+      chips.push(
+        activeTrack.settings.countInMode === 'beats'
+          ? `${activeTrack.settings.beatCount} Beats @ ${activeTrack.settings.bpm} BPM`
+          : `Count-In ${activeTrack.settings.countInMode}`
+      );
+    }
+    for (const label of chips) {
+      const span = document.createElement('span');
+      span.className = 'share-chip';
+      span.textContent = label;
+      shareSummaryChips.appendChild(span);
+    }
+    btnNativeShare.classList.toggle('hidden', typeof navigator.share !== 'function');
+  }
+
+  shareModal.classList.remove('hidden');
+  syncModalScrollLock();
+}
+
+function closeShareModal(): void {
+  shareModal.classList.add('hidden');
+  syncModalScrollLock();
 }
 
 function openYtModal(): void {
@@ -1220,9 +1291,113 @@ speedSlider.addEventListener('input', () => {
   player.setSpeed(Number(speedSlider.value));
 });
 
+const lyricsController = createLyricsController({
+  getActiveTrack: () => activeTrack,
+  getCurrentTime: () => player.getSnapshot().currentTime,
+  getLoopEnabled: () => player.getSnapshot().loopEnabled,
+  getIsPlaying: () => player.getSnapshot().isPlaying,
+  onSeek: (t) => player.seekTo(t),
+  onPlayPause: () => player.togglePlay(),
+  onRestartA: () => restartFromPointA(),
+  onBack5: () => player.seekBy(-5),
+  onToggleLoop: () => player.toggleLoop(),
+  onSaveTrack: async (track) => {
+    await updateTrackMeta(track);
+    await refreshTrackList();
+  },
+  onToast: (msg) => showToast(msg),
+});
+
+btnShareOpen.addEventListener('click', openShareModal);
+$<HTMLButtonElement>('btn-close-share').addEventListener('click', closeShareModal);
+shareModal.addEventListener('click', (e) => {
+  if (e.target === shareModal) closeShareModal();
+});
+
+btnCopyShare.addEventListener('click', async () => {
+  const url = shareLinkInput.value;
+  if (!url) return;
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast('Practice link copied to clipboard.');
+  } catch {
+    shareLinkInput.select();
+    document.execCommand('copy');
+    showToast('Practice link copied.');
+  }
+});
+
+btnNativeShare.addEventListener('click', async () => {
+  if (!navigator.share || !shareLinkInput.value) return;
+  try {
+    await navigator.share({
+      title: activeTrack?.name ? `ChoreoLoop: ${activeTrack.name}` : 'ChoreoLoop Setup',
+      url: shareLinkInput.value,
+    });
+  } catch {
+    // User cancelled share sheet
+  }
+});
+
+btnExportJson.addEventListener('click', () => {
+  if (!activeTrack) return;
+  exportTrackSetupJson(activeTrack);
+  showToast('Setup exported as .choreoloop.json');
+});
+
+btnImportJson.addEventListener('click', () => {
+  setupJsonInput.click();
+});
+
+setupJsonInput.addEventListener('change', async () => {
+  const file = setupJsonInput.files?.[0];
+  setupJsonInput.value = '';
+  if (!file) return;
+  const imported = parseTrackSetupJson(await file.text());
+  if (!imported) {
+    showToast('Invalid .choreoloop.json setup file.');
+    return;
+  }
+
+  if (imported.youtubeId && (!activeTrack || activeTrack.mediaKind !== 'youtube')) {
+    const meta = await saveYouTubeTrack(imported.youtubeId, imported.name);
+    meta.settings = { ...meta.settings, ...imported.settings };
+    meta.bookmarks = imported.bookmarks;
+    if (imported.lyrics) meta.lyrics = imported.lyrics;
+    await updateTrackMeta(meta);
+    await refreshTrackList();
+    await selectTrack(meta.id);
+    closeShareModal();
+    showToast('YouTube setup imported.');
+    return;
+  }
+
+  if (!activeTrack) {
+    showToast('Load a track first to apply a local setup.');
+    return;
+  }
+
+  activeTrack.settings = { ...activeTrack.settings, ...imported.settings };
+  activeTrack.bookmarks = imported.bookmarks;
+  if (imported.lyrics) activeTrack.lyrics = imported.lyrics;
+  await updateTrackMeta(activeTrack);
+  await refreshTrackList();
+  await selectTrack(activeTrack.id);
+  closeShareModal();
+  showToast('Setup applied to current track.');
+});
+
 // Keyboard shortcuts for desktop testing
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape') {
+    if (lyricsController.isFullscreen()) {
+      lyricsController.exitFullscreen();
+      return;
+    }
+    if (!shareModal.classList.contains('hidden')) {
+      closeShareModal();
+      return;
+    }
     if (!headerMenuEl.classList.contains('hidden')) {
       closeHeaderMenu();
       return;
@@ -1268,8 +1443,24 @@ if ('serviceWorker' in navigator && !import.meta.env.DEV) {
   });
 }
 
-// Handle ?yt=... or Android PWA share_target (?url=... / ?text=...)
+// Handle #share=... practice setup links, ?yt=..., or Android PWA share_target
 async function checkIncomingSharedLink(): Promise<boolean> {
+  const shared = decodeShareHash(window.location.hash);
+  if (shared) {
+    window.history.replaceState({}, '', window.location.pathname);
+    const meta = await saveYouTubeTrack(shared.youtubeId, shared.name);
+    meta.settings = { ...meta.settings, ...shared.settings };
+    meta.bookmarks = shared.bookmarks;
+    if (typeof shared.lyricsOffset === 'number' && meta.lyrics) {
+      meta.lyrics.globalOffset = shared.lyricsOffset;
+    }
+    await updateTrackMeta(meta);
+    await refreshTrackList();
+    await selectTrack(meta.id);
+    showToast('Shared practice setup loaded!');
+    return true;
+  }
+
   const params = new URLSearchParams(window.location.search);
   const candidate = params.get('yt') || params.get('url') || params.get('text') || '';
   const sharedTitle = params.get('title') || undefined;

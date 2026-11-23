@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self' https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.ytimg.com https://*.ggpht.com https://*.googleusercontent.com; media-src 'self' blob:; frame-src https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https://www.youtube.com https://www.youtube-nocookie.com https://*.google.com https://*.youtube.com; object-src 'none'; base-uri 'self';"
+      content="default-src 'self'; script-src 'self' https://www.youtube.com https://s.ytimg.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https://*.ytimg.com https://*.ggpht.com https://*.googleusercontent.com; media-src 'self' blob:; frame-src https://www.youtube.com https://www.youtube-nocookie.com; connect-src 'self' https://lrclib.net https://www.youtube.com https://www.youtube-nocookie.com https://*.google.com https://*.youtube.com; object-src 'none'; base-uri 'self';"
     />
     <meta name="referrer" content="strict-origin-when-cross-origin" />
     <meta
@@ -40,6 +40,9 @@
           </div>
         </div>
         <div class="top-actions">
+          <button id="btn-share-open" class="btn-pill btn-surface hidden" type="button" aria-label="Share setup">
+            Share
+          </button>
           <button id="btn-library" class="btn-pill btn-surface" type="button" aria-label="Open library">
             Library <span id="library-count" class="badge">0</span>
           </button>
@@ -406,6 +409,80 @@
             YouTube playback speed is restricted by the Google/YouTube API to fixed steps (0.25x, 0.5x, 0.75x, 1.0x, 1.25x).
           </p>
         </section>
+
+        <!-- Synced Lyrics Card -->
+        <section id="lyrics-card" class="panel-card hidden" aria-label="Synced Lyrics">
+          <div class="panel-header">
+            <h2 class="panel-title">Lyrics</h2>
+            <div class="panel-header-actions">
+              <button id="btn-lyrics-find" class="btn-mini btn-surface" type="button" aria-pressed="false">
+                Find
+              </button>
+              <button id="btn-lyrics-sync" class="btn-mini btn-surface" type="button" aria-pressed="false" disabled>
+                Sync
+              </button>
+              <button id="btn-lyrics-fs" class="btn-mini btn-accent" type="button" disabled>
+                Fullscreen
+              </button>
+            </div>
+          </div>
+
+          <div id="lyrics-find-bar" class="lyrics-subdrawer hidden">
+            <form id="lyrics-find-form" class="lyrics-find-row">
+              <input
+                id="lyrics-find-input"
+                type="text"
+                class="text-input"
+                placeholder="Artist - Song title"
+                aria-label="Search lyrics on LRCLIB"
+              />
+              <button id="btn-lyrics-search" class="btn-mini btn-accent" type="submit">Search</button>
+              <button id="btn-lyrics-file" class="btn-mini btn-surface" type="button">+ .lrc</button>
+              <button id="btn-lyrics-paste-toggle" class="btn-mini btn-surface" type="button">Paste</button>
+            </form>
+            <input id="lrc-file-input" type="file" accept=".lrc,.txt,text/plain" hidden />
+            <div id="lyrics-paste-wrap" class="lyrics-paste-wrap hidden">
+              <textarea
+                id="lyrics-paste-input"
+                class="text-input lyrics-textarea"
+                rows="3"
+                placeholder="Paste .lrc timestamps or plain lyrics here..."
+              ></textarea>
+              <div class="lyrics-paste-actions">
+                <button id="btn-lyrics-paste-save" class="btn-mini btn-accent" type="button">Save Lyrics</button>
+              </div>
+            </div>
+            <div id="lyrics-results" class="lyrics-results hidden"></div>
+          </div>
+
+          <div id="lyrics-sync-bar" class="lyrics-subdrawer hidden">
+            <div class="lyrics-sync-top">
+              <div class="segmented-group" role="group" aria-label="Lyrics nudge scope">
+                <button class="btn-step is-active" data-lyrics-mode="global" type="button">All Lines</button>
+                <button class="btn-step" data-lyrics-mode="ripple" type="button">From Line</button>
+                <button class="btn-step" data-lyrics-mode="single" type="button">This Line</button>
+              </div>
+              <span id="lyrics-nudge-readout" class="time-mono lyrics-nudge-readout">Global: +0.0s</span>
+            </div>
+            <div class="lyrics-sync-bottom">
+              <div class="lyrics-nudge-btns">
+                <button class="btn-mini btn-surface" data-lyrics-nudge="-0.5" type="button">-0.5s</button>
+                <button class="btn-mini btn-surface" data-lyrics-nudge="-0.1" type="button">-0.1s</button>
+                <button class="btn-mini btn-surface" data-lyrics-nudge="0.1" type="button">+0.1s</button>
+                <button class="btn-mini btn-surface" data-lyrics-nudge="0.5" type="button">+0.5s</button>
+              </div>
+              <div class="lyrics-nudge-btns">
+                <button id="btn-lyrics-nudge-reset" class="btn-mini btn-surface" type="button">Reset</button>
+                <button id="btn-lyrics-clear" class="btn-mini btn-danger-outline" type="button">Clear</button>
+              </div>
+            </div>
+          </div>
+
+          <p id="lyrics-empty" class="lyrics-empty">
+            No lyrics saved yet. Tap Find to search LRCLIB or import a local .lrc file for offline practice.
+          </p>
+          <div id="lyrics-list" class="lyrics-list hidden"></div>
+        </section>
       </main>
 
       <footer class="app-footer">
@@ -420,6 +497,65 @@
 
       <!-- Toast Notification -->
       <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+      <!-- Fullscreen Lyrics Teleprompter -->
+      <div id="lyrics-fs-overlay" class="lyrics-fs-overlay hidden" role="dialog" aria-modal="true" aria-label="Fullscreen Lyrics">
+        <div class="lyrics-fs-top">
+          <span id="lyrics-fs-title" class="lyrics-fs-title">Lyrics</span>
+          <button id="btn-lfs-exit" class="btn-pill btn-surface" type="button">Exit</button>
+        </div>
+        <div class="lyrics-fs-stage">
+          <div id="lyrics-fs-prev" class="lyrics-fs-line is-prev"></div>
+          <div id="lyrics-fs-curr" class="lyrics-fs-line is-curr"></div>
+          <div id="lyrics-fs-next" class="lyrics-fs-line is-next"></div>
+        </div>
+        <div class="lyrics-fs-hud" role="toolbar" aria-label="Fullscreen playback controls">
+          <button id="btn-lfs-restart-a" class="btn-fs-ctrl" type="button">Restart A</button>
+          <button id="btn-lfs-back-5" class="btn-fs-ctrl" type="button">-5s</button>
+          <button id="btn-lfs-play" class="btn-fs-ctrl btn-fs-play" type="button" aria-label="Play">&#9654;</button>
+          <button id="btn-lfs-loop" class="btn-fs-ctrl" type="button">Loop</button>
+        </div>
+      </div>
+
+      <!-- Share & Setup Export Modal -->
+      <div id="share-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="Share Practice Setup">
+        <div class="modal-sheet">
+          <div class="modal-header">
+            <h2 class="modal-title">Share Practice Setup</h2>
+            <button id="btn-close-share" class="btn-pill btn-surface" type="button">Close</button>
+          </div>
+
+          <div id="share-yt-section" class="share-section hidden">
+            <p class="modal-note">
+              Share this link so anyone can open the exact YouTube video with your A-B loop, bookmarks, speed, count-in, and lyrics sync.
+            </p>
+            <div id="share-summary-chips" class="share-chips"></div>
+            <div class="yt-input-row">
+              <input id="share-link-input" type="text" class="text-input time-mono" readonly aria-label="Shareable setup link" />
+              <button id="btn-copy-share" class="btn-pill btn-accent" type="button">Copy</button>
+            </div>
+            <button id="btn-native-share" class="btn-primary hidden" type="button">Share via...</button>
+          </div>
+
+          <div class="share-section">
+            <p class="modal-note">
+              Export or import a tiny <code>.choreoloop.json</code> setup file (loops, speed, count-in, and offline lyrics).
+            </p>
+            <div class="share-json-actions">
+              <button id="btn-export-json" class="btn-pill btn-accent" type="button">Export .json</button>
+              <button id="btn-import-json" class="btn-pill btn-surface" type="button">Import .json</button>
+              <input id="setup-json-input" type="file" accept=".json,application/json" hidden />
+            </div>
+          </div>
+
+          <div class="guide-block">
+            <h3>Save a Practice Video</h3>
+            <p>
+              To save a new video with your speed, mirror mode, and loop points baked in, switch to <strong>Fullscreen</strong> and use your phone's built-in <strong>Screen Recording</strong>.
+            </p>
+          </div>
+        </div>
+      </div>
 
       <!-- YouTube Link Modal -->
       <div id="yt-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-label="Add YouTube Link">
@@ -532,6 +668,15 @@
                 <em>Offline Tip:</em> Before heading into a dance studio or basement with no mobile data, refresh once while online to cache the latest version (or keep the tab open).
                 <br />
                 Your local library and bookmarks are never deleted on refresh.
+              </p>
+            </div>
+
+            <div class="guide-block">
+              <h3>Share Setups &amp; Save Videos</h3>
+              <p>
+                <strong>YouTube Practice Links:</strong> Tap <strong>Share</strong> in the top bar to copy a link containing your video, A-B loop, bookmarks, speed, and count-in settings.
+                <br />
+                <strong>Local Files:</strong> Export a tiny <code>.choreoloop.json</code> file to share loops and synced lyrics, or enter <strong>Fullscreen</strong> and use your phone's built-in <strong>Screen Recording</strong> to save a mirrored/slowed video clip.
               </p>
             </div>
 
