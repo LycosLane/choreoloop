@@ -10,7 +10,7 @@ declare(strict_types=1);
 
 const DB_PATH = __DIR__ . '/links.sqlite';
 const MAX_AGE_SECONDS = 365 * 86400;
-const ALLOWED_PREFIX = 'https://loop.samurainami.com/#share';
+const ALLOWED_URL_PATTERN = '/^https:\/\/loop\.samurainami\.com\/#sharez?=[A-Za-z0-9_-]+$/';
 
 function getDb(): PDO {
     $pdo = new PDO('sqlite:' . DB_PATH, null, null, [
@@ -46,7 +46,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['s'])) {
             $stmt = $pdo->prepare('SELECT url FROM links WHERE id = :id LIMIT 1');
             $stmt->execute([':id' => $code]);
             $row = $stmt->fetch();
-            if ($row && is_string($row['url'])) {
+            if ($row && is_string($row['url']) && preg_match(ALLOWED_URL_PATTERN, $row['url']) === 1) {
                 $upd = $pdo->prepare('UPDATE links SET last_accessed = :now WHERE id = :id');
                 $upd->execute([':now' => time(), ':id' => $code]);
                 header('Location: ' . $row['url'], true, 302);
@@ -66,7 +66,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $body = json_decode($raw ?: '', true);
     $url = is_array($body) && isset($body['url']) && is_string($body['url']) ? trim($body['url']) : '';
 
-    if ($url === '' || !str_starts_with($url, ALLOWED_PREFIX) || strlen($url) > 16384) {
+    if ($url === '' || strlen($url) > 16384 || preg_match(ALLOWED_URL_PATTERN, $url) !== 1) {
         http_response_code(400);
         echo json_encode(['error' => 'Invalid target URL']);
         exit;

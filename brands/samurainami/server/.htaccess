@@ -5,5 +5,5 @@
 
 # Route https://loop.samurainami.com/?s=<code> to s.php while keeping index.html untouched
 RewriteEngine On
-RewriteCond %{QUERY_STRING} ^s=([a-zA-Z0-9]+)$
+RewriteCond %{QUERY_STRING} ^s=([a-zA-Z0-9]{4,16})$
 RewriteRule ^$ /s.php?s=%1 [L]
