@@ -189,11 +189,14 @@ export function createLyricsController(deps: LyricsControllerDeps): LyricsContro
     const activeRow = listEl.querySelector<HTMLElement>(`[data-line-idx="${activeLineIdx}"]`);
     if (!activeRow) return;
 
-    // Scroll only inside #lyrics-list so the outer page viewport never jumps
-    const rowTop = activeRow.offsetTop;
-    const rowBottom = rowTop + activeRow.offsetHeight;
+    // Measure relative to #lyrics-list (offsetTop depends on offsetParent)
+    const listRect = listEl.getBoundingClientRect();
+    const rowRect = activeRow.getBoundingClientRect();
+    const rowTop = rowRect.top - listRect.top + listEl.scrollTop;
+    const rowBottom = rowTop + rowRect.height;
     const viewTop = listEl.scrollTop;
     const viewBottom = viewTop + listEl.clientHeight;
+
     if (rowTop < viewTop) {
       listEl.scrollTop = rowTop;
     } else if (rowBottom > viewBottom) {
