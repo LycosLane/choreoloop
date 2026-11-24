@@ -563,6 +563,16 @@ export class ChoreoPlayer {
     this.callbacks.onSettingsChanged();
   }
 
+  public stepSpeed(dir: -1 | 1): void {
+    if (this.activeKind === 'youtube') {
+      const idx = YT_SPEEDS.indexOf(snapYouTubeSpeed(this.speed));
+      const nextIdx = clamp(idx + dir, 0, YT_SPEEDS.length - 1);
+      this.setSpeed(YT_SPEEDS[nextIdx]);
+      return;
+    }
+    this.setSpeed(this.speed + dir * 0.05);
+  }
+
   private applyPlaybackRate(media: HTMLMediaElement): void {
     media.playbackRate = this.speed;
     if ('preservesPitch' in media) {

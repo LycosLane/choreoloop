@@ -473,9 +473,14 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
 
   // Speed controls
   speedReadoutEl.textContent = `${snap.speed.toFixed(2)}x`;
+  speedSlider.step = isYouTube ? '0.25' : '0.05';
   speedSlider.value = String(snap.speed);
+  btnSpeedMinus.textContent = isYouTube ? '-25%' : '-5%';
+  btnSpeedPlus.textContent = isYouTube ? '+25%' : '+5%';
   for (const btn of speedButtons) {
     const preset = Number(btn.dataset.speed);
+    const unsupportedOnYt = isYouTube && Math.abs(preset - 0.9) < 0.01;
+    btn.classList.toggle('hidden', unsupportedOnYt);
     const isActive = Math.abs(preset - snap.speed) < 0.01;
     btn.classList.toggle('is-active', isActive);
     btn.setAttribute('aria-pressed', String(isActive));
@@ -1283,8 +1288,8 @@ bookmarkForm.addEventListener('submit', (e) => {
   toggleBookmarkForm(false);
 });
 
-btnSpeedMinus.addEventListener('click', () => player.setSpeed(player.getSnapshot().speed - 0.05));
-btnSpeedPlus.addEventListener('click', () => player.setSpeed(player.getSnapshot().speed + 0.05));
+btnSpeedMinus.addEventListener('click', () => player.stepSpeed(-1));
+btnSpeedPlus.addEventListener('click', () => player.stepSpeed(1));
 
 for (const btn of speedButtons) {
   btn.addEventListener('click', () => {
