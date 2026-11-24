@@ -30,15 +30,46 @@ export interface PlayerCallbacks {
 }
 
 const MIN_LOOP_SPAN = 0.5;
-const YT_SPEEDS = [0.25, 0.5, 0.75, 1.0, 1.25];
+export const YT_SPEEDS = [0.25, 0.5, 0.75, 1.0, 1.25] as const;
 
 function quantizeSeconds(val: number): number {
   return Math.round(val * 100) / 100;
 }
 
-function snapYouTubeSpeed(speed: number): number {
-  return YT_SPEEDS.reduce((best, cur) =>
+export function snapYouTubeSpeed(speed: number): number {
+  return YT_SPEEDS.reduce<number>((best, cur) =>
     Math.abs(cur - speed) < Math.abs(best - speed) ? cur : best
+  , YT_SPEEDS[0]);
+}
+
+export function stepSpeedValue(current: number, dir: -1 | 1, isYouTube: boolean): number {
+  if (isYouTube) {
+    const idx = YT_SPEEDS.indexOf(snapYouTubeSpeed(current) as (typeof YT_SPEEDS)[number]);
+    const safeIdx = idx >= 0 ? idx : YT_SPEEDS.indexOf(1.0);
+    const nextIdx = clamp(safeIdx + dir, 0, YT_SPEEDS.length - 1);
+    return YT_SPEEDS[nextIdx];
+  }
+  return clamp(Math.round((current + dir * 0.05) * 100) / 100, 0.25, 1.25);
+}
+
+export function computeBeatIntervalMs(bpm: number, speed: number): number {
+  const safeBpm = clamp(Number.isFinite(bpm) ? bpm : 120, 40, 240);
+  const safeSpeed = clamp(Number.isFinite(speed) ? speed : 1.0, 0.25, 1.25);
+  return Math.round(60000 / (safeBpm * safeSpeed));
+}
+
+export function evaluateABLoopHit(
+  currentTime: number,
+  pointA: number | null,
+  pointB: number | null,
+  loopEnabled: boolean
+): boolean {
+  return (
+    loopEnabled &&
+    pointA !== null &&
+    pointB !== null &&
+    pointB > pointA &&
+    currentTime >= pointB
   );
 }
 
@@ -58,6 +89,8 @@ export class ChoreoPlayer {
   private countInTimerId: number | null = null;
   private ytPlayVerifyTimerId: number | null = null;
   private ytLoadSeq = 0;
+  private htmlUnlockSeq = 0;
+  private htmlSavedVolume: number | null = null;
   private ytPreCountInVolume: number | null = null;
   private ytCountInHoldTime: number | null = null;
   private isLoopSeeking = false;
@@ -113,9 +146,14 @@ export class ChoreoPlayer {
 
     el.addEventListener('ended', () => {
       if (el !== this.activeHtmlMedia) return;
-      if (this.loopEnabled && this.pointA !== null) {
+      if (this.loopEnabled && this.pointA !== null && this.pointB !== null && this.pointB > this.pointA) {
         el.currentTime = this.pointA;
-        void el.play();
+        if (this.countInEnabled && this.repeatCountInOnLoop && this.countInRemaining === null) {
+          this.stopLoopMonitor();
+          this.startCountIn();
+        } else {
+          void el.play();
+        }
         return;
       }
       this.stopLoopMonitor();
@@ -168,6 +206,7 @@ export class ChoreoPlayer {
     const seq = ++this.ytLoadSeq;
     this.cleanupActiveMedia();
     this.applyTrackSettings(settings);
+    this.speed = snapYouTubeSpeed(this.speed);
     this.activeKind = 'youtube';
     this.applyMirror();
     this.emitState();
@@ -188,12 +227,14 @@ export class ChoreoPlayer {
         },
         events: {
           onReady: (e) => {
+            if (this.activeKind !== 'youtube' || seq !== this.ytLoadSeq) return;
             this.ytReady = true;
             e.target.setPlaybackRate(this.speed);
             this.emitTime();
             this.emitState();
           },
           onStateChange: (e) => {
+            if (this.activeKind !== 'youtube' || seq !== this.ytLoadSeq) return;
             if (this.countInRemaining !== null) {
               return;
             }
@@ -211,9 +252,14 @@ export class ChoreoPlayer {
               this.emitState();
             } else if (state === YT.PlayerState.ENDED) {
               this.clearYtPlayVerifyTimer();
-              if (this.loopEnabled && this.pointA !== null) {
+              if (this.loopEnabled && this.pointA !== null && this.pointB !== null && this.pointB > this.pointA) {
                 e.target.seekTo(this.pointA, true);
-                e.target.playVideo();
+                if (this.countInEnabled && this.repeatCountInOnLoop && this.countInRemaining === null) {
+                  this.stopLoopMonitor();
+                  this.startCountIn();
+                } else {
+                  e.target.playVideo();
+                }
                 return;
               }
               this.ytPlaying = false;
@@ -222,11 +268,13 @@ export class ChoreoPlayer {
             }
           },
           onError: () => {
+            if (this.activeKind !== 'youtube' || seq !== this.ytLoadSeq) return;
             this.callbacks.onError('YouTube video could not be loaded (embedding may be disabled by uploader).');
           },
         },
       });
     } catch (err) {
+      if (this.activeKind !== 'youtube' || seq !== this.ytLoadSeq) return;
       this.callbacks.onError(err instanceof Error ? err.message : 'Failed to load YouTube Player.');
     }
   }
@@ -259,6 +307,9 @@ export class ChoreoPlayer {
     this.stopLoopMonitor();
     this.clearYtPlayVerifyTimer();
     this.isLoopSeeking = false;
+    this.htmlUnlockSeq += 1;
+    this.restoreHtmlSavedVolume();
+    this.activeKind = null;
 
     this.videoEl.pause();
     this.audioEl.pause();
@@ -285,7 +336,18 @@ export class ChoreoPlayer {
     this.ytPlaying = false;
     this.ytPreCountInVolume = null;
     this.ytCountInHoldTime = null;
-    this.activeKind = null;
+  }
+
+  private restoreHtmlSavedVolume(): void {
+    if (this.htmlSavedVolume === null) return;
+    const vol = this.htmlSavedVolume;
+    this.htmlSavedVolume = null;
+    if (this.activeHtmlMedia) {
+      this.activeHtmlMedia.volume = vol;
+    } else {
+      this.videoEl.volume = vol;
+      this.audioEl.volume = vol;
+    }
   }
 
   public togglePlay(): void {
@@ -400,6 +462,8 @@ export class ChoreoPlayer {
 
     const media = this.activeHtmlMedia;
     if (!media) return;
+    this.htmlUnlockSeq += 1;
+    this.restoreHtmlSavedVolume();
     this.applyPlaybackRate(media);
     void media.play().catch(() => {
       this.callbacks.onError('Tap Play again to start playback.');
@@ -440,16 +504,23 @@ export class ChoreoPlayer {
       // Unlock HTML media element with volume=0 (audible permission, not muted=true) within user gesture
       const media = this.activeHtmlMedia;
       if (media) {
-        const prevVolume = media.volume;
+        if (this.htmlSavedVolume === null) {
+          this.htmlSavedVolume = media.volume;
+        }
+        const unlockSeq = ++this.htmlUnlockSeq;
         media.volume = 0;
         void media
           .play()
           .then(() => {
-            media.pause();
-            media.volume = prevVolume;
+            if (unlockSeq === this.htmlUnlockSeq && this.countInRemaining !== null) {
+              media.pause();
+              this.restoreHtmlSavedVolume();
+            }
           })
           .catch(() => {
-            media.volume = prevVolume;
+            if (unlockSeq === this.htmlUnlockSeq) {
+              this.restoreHtmlSavedVolume();
+            }
           });
       }
     }
@@ -461,7 +532,7 @@ export class ChoreoPlayer {
         : this.countInMode === '5s'
           ? 5
           : this.beatCount;
-    const stepMs = isBeats ? Math.round(60000 / (this.bpm * this.speed)) : 1000;
+    const stepMs = isBeats ? computeBeatIntervalMs(this.bpm, this.speed) : 1000;
 
     let stepIndex = 1;
     this.countInRemaining = isBeats ? 1 : totalSteps;
@@ -494,6 +565,8 @@ export class ChoreoPlayer {
     if (this.countInRemaining === null && this.countInTimerId === null) return;
     this.clearCountInTimer();
     this.countInRemaining = null;
+    this.htmlUnlockSeq += 1;
+    this.restoreHtmlSavedVolume();
     if (this.activeKind === 'youtube' && this.ytPlayer) {
       this.ytPlayer.pauseVideo();
       if (this.ytPreCountInVolume !== null) {
@@ -564,13 +637,7 @@ export class ChoreoPlayer {
   }
 
   public stepSpeed(dir: -1 | 1): void {
-    if (this.activeKind === 'youtube') {
-      const idx = YT_SPEEDS.indexOf(snapYouTubeSpeed(this.speed));
-      const nextIdx = clamp(idx + dir, 0, YT_SPEEDS.length - 1);
-      this.setSpeed(YT_SPEEDS[nextIdx]);
-      return;
-    }
-    this.setSpeed(this.speed + dir * 0.05);
+    this.setSpeed(stepSpeedValue(this.speed, dir, this.activeKind === 'youtube'));
   }
 
   private applyPlaybackRate(media: HTMLMediaElement): void {
@@ -671,11 +738,16 @@ export class ChoreoPlayer {
       this.pointA = 0;
     }
     if (t < this.pointA + MIN_LOOP_SPAN) {
-      this.pointB = quantizeSeconds(clamp(this.pointA + MIN_LOOP_SPAN, 0, dur || this.pointA + MIN_LOOP_SPAN));
+      const targetB = dur > 0 ? Math.min(dur, this.pointA + MIN_LOOP_SPAN) : this.pointA + MIN_LOOP_SPAN;
+      this.pointB = quantizeSeconds(targetB);
+      if (this.pointB <= this.pointA && dur >= MIN_LOOP_SPAN) {
+        this.pointA = quantizeSeconds(Math.max(0, dur - MIN_LOOP_SPAN));
+        this.pointB = quantizeSeconds(dur);
+      }
     } else {
       this.pointB = t;
     }
-    this.loopEnabled = true;
+    this.loopEnabled = this.pointB !== null && this.pointB > this.pointA;
     this.emitState();
     this.callbacks.onSettingsChanged();
   }
@@ -755,10 +827,10 @@ export class ChoreoPlayer {
       }
     }
 
-    if (cur >= this.pointB) {
+    if (evaluateABLoopHit(cur, this.pointA, this.pointB, this.loopEnabled)) {
       this.isLoopSeeking = true;
       this.loopSeekUntilMs = performance.now() + 350;
-      this.seekInternal(this.pointA);
+      this.seekInternal(this.pointA!);
       if (this.countInEnabled && this.repeatCountInOnLoop && this.countInRemaining === null) {
         if (this.activeKind !== 'youtube') {
           this.pauseNow();
@@ -772,7 +844,7 @@ export class ChoreoPlayer {
   private startLoopMonitor(): void {
     if (this.rafId !== null) return;
     const tick = () => {
-      if (!this.isCurrentlyPlaying()) {
+      if (!this.isCurrentlyPlaying() || this.countInRemaining !== null) {
         this.rafId = null;
         return;
       }

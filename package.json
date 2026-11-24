@@ -1,6 +1,6 @@
 {
   "name": "choreoloop",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "private": true,
   "description": "Mobile-first offline PWA for dancers with A-B looping, slow-motion speed control, video mirror mode, and count-in timer.",
   "type": "module",
@@ -8,7 +8,8 @@
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node scripts/run-tests.mjs"
   },
   "devDependencies": {
     "typescript": "^5.8.2",

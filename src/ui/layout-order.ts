@@ -7,31 +7,63 @@ const PANEL_DEFS = [
   { id: 'lyrics-card', label: 'Lyrics' },
 ] as const;
 
-type PanelId = (typeof PANEL_DEFS)[number]['id'];
+export type PanelId = (typeof PANEL_DEFS)[number]['id'];
 const DEFAULT_ORDER: PanelId[] = PANEL_DEFS.map((p) => p.id);
+
+/**
+ * Normalizes a persisted panel-order value into a deduplicated, complete PanelId list.
+ */
+export function reconcilePanelOrder(parsed: unknown): PanelId[] {
+  if (!Array.isArray(parsed)) return [...DEFAULT_ORDER];
+  const seen = new Set<PanelId>();
+  const valid: PanelId[] = [];
+  for (const id of parsed) {
+    if (DEFAULT_ORDER.includes(id as PanelId) && !seen.has(id as PanelId)) {
+      seen.add(id as PanelId);
+      valid.push(id as PanelId);
+    }
+  }
+  const missing = DEFAULT_ORDER.filter((id) => !seen.has(id));
+  return [...valid, ...missing];
+}
+
+/**
+ * Moves `id` up (-1) or down (+1) across currently visible panels.
+ */
+export function movePanelInOrder(
+  order: readonly PanelId[],
+  id: PanelId,
+  dir: -1 | 1,
+  hiddenIds: ReadonlySet<PanelId> = new Set()
+): PanelId[] {
+  const idx = order.indexOf(id);
+  if (idx < 0) return [...order];
+  let target = idx + dir;
+  while (target >= 0 && target < order.length && hiddenIds.has(order[target])) {
+    target += dir;
+  }
+  if (target < 0 || target >= order.length) return [...order];
+  const next = [...order];
+  [next[idx], next[target]] = [next[target], next[idx]];
+  return next;
+}
 
 function loadSavedOrder(): PanelId[] {
   try {
     const raw = localStorage.getItem(ORDER_KEY);
     if (!raw) return [...DEFAULT_ORDER];
-    const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return [...DEFAULT_ORDER];
-
-    const valid = parsed.filter((id): id is PanelId =>
-      DEFAULT_ORDER.includes(id as PanelId)
-    );
-    const missing = DEFAULT_ORDER.filter((id) => !valid.includes(id));
-    return [...valid, ...missing];
+    return reconcilePanelOrder(JSON.parse(raw) as unknown);
   } catch {
     return [...DEFAULT_ORDER];
   }
 }
 
-function saveOrder(order: PanelId[]): void {
+function saveOrder(order: PanelId[]): boolean {
   try {
     localStorage.setItem(ORDER_KEY, JSON.stringify(order));
+    return true;
   } catch {
-    // Ignore storage errors
+    return false;
   }
 }
 
@@ -65,27 +97,53 @@ export function initLayoutOrder(onDone?: () => void): LayoutOrderController {
     { bar: HTMLDivElement; upBtn: HTMLButtonElement; downBtn: HTMLButtonElement }
   >();
 
-  function applyOrder(): void {
+  function getHiddenIds(): Set<PanelId> {
+    const hidden = new Set<PanelId>();
     for (const id of order) {
       const panel = document.getElementById(id);
-      if (panel) {
+      if (panel?.classList.contains('hidden')) {
+        hidden.add(id);
+      }
+    }
+    return hidden;
+  }
+
+  function applyOrder(): void {
+    const orderedPanels = order
+      .map((id) => document.getElementById(id))
+      .filter((el): el is HTMLElement => el !== null);
+    const currentPanels = Array.from(mainEl!.children).filter((el): el is HTMLElement =>
+      DEFAULT_ORDER.includes(el.id as PanelId)
+    );
+    const orderChanged =
+      orderedPanels.length !== currentPanels.length ||
+      orderedPanels.some((panel, i) => currentPanels[i] !== panel);
+
+    if (orderChanged) {
+      const activeEl = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      for (const panel of orderedPanels) {
         mainEl!.appendChild(panel);
       }
+      if (activeEl && mainEl!.contains(activeEl)) {
+        activeEl.focus();
+      }
+    }
+
+    const hidden = getHiddenIds();
+    const visibleOrder = order.filter((id) => !hidden.has(id));
+    for (const id of order) {
       const ref = barRefs.get(id);
       if (ref) {
-        const idx = order.indexOf(id);
-        ref.upBtn.disabled = idx === 0;
-        ref.downBtn.disabled = idx === order.length - 1;
+        const vIdx = visibleOrder.indexOf(id);
+        ref.upBtn.disabled = vIdx <= 0;
+        ref.downBtn.disabled = vIdx < 0 || vIdx >= visibleOrder.length - 1;
       }
     }
   }
 
   function movePanel(id: PanelId, dir: -1 | 1): void {
-    const idx = order.indexOf(id);
-    const target = idx + dir;
-    if (idx < 0 || target < 0 || target >= order.length) return;
-    const next = [...order];
-    [next[idx], next[target]] = [next[target], next[idx]];
+    const next = movePanelInOrder(order, id, dir, getHiddenIds());
+    if (next.every((panelId, i) => panelId === order[i])) return;
     order = next;
     saveOrder(order);
     applyOrder();

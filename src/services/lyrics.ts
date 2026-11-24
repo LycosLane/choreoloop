@@ -55,7 +55,12 @@ export function parseLyricsText(rawText: string): { lines: LyricLine[]; source: 
       const mins = Number(m[1]);
       const secs = Number(m[2]);
       const fracRaw = m[3] ?? '0';
-      const frac = fracRaw.length === 3 ? Number(fracRaw) / 1000 : Number(fracRaw) / 100;
+      const frac =
+        fracRaw.length === 1
+          ? Number(fracRaw) / 10
+          : fracRaw.length === 3
+            ? Number(fracRaw) / 1000
+            : Number(fracRaw) / 100;
       const baseTime = mins * 60 + secs + frac;
       if (Number.isFinite(baseTime)) {
         timed.push({ baseTime: Math.round(baseTime * 100) / 100, offset: 0, text });

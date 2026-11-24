@@ -25,6 +25,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run test
       - run: npm run build
       - uses: actions/upload-pages-artifact@v3
         with:
@@ -50,6 +51,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run test
       - run: npm run build
         env:
           VITE_BRAND: samurainami

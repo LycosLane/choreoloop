@@ -116,7 +116,7 @@ export function playCountInTone(
     if (!audioCtx) {
       audioCtx = new AudioContextCtor();
     }
-    if (audioCtx.state === 'suspended') {
+    if (audioCtx.state === 'suspended' || (audioCtx.state as string) === 'interrupted') {
       void audioCtx.resume();
     }
     const ctx = audioCtx;
@@ -186,6 +186,8 @@ export function probeMediaDuration(blob: Blob, kind: 'audio' | 'video'): Promise
     el.preload = 'metadata';
 
     const cleanup = () => {
+      el.onloadedmetadata = null;
+      el.onerror = null;
       el.removeAttribute('src');
       el.load();
       URL.revokeObjectURL(url);

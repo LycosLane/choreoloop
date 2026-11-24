@@ -1,4 +1,4 @@
-import type { TrackMediaRecord, TrackMetadata } from './types';
+import type { MediaKind, TrackMediaRecord, TrackMetadata } from './types';
 import {
   detectMediaKind,
   generateId,
@@ -12,8 +12,29 @@ const DB_VERSION = 1;
 const META_STORE = 'trackMeta';
 const MEDIA_STORE = 'trackMedia';
 const LAST_TRACK_KEY = 'choreoloop:lastTrackId';
+const YT_SPEEDS = [0.25, 0.5, 0.75, 1.0, 1.25];
 
 let dbPromise: Promise<IDBDatabase> | null = null;
+
+function snapYouTubeRate(speed: number): number {
+  return YT_SPEEDS.reduce((best, cur) =>
+    Math.abs(cur - speed) < Math.abs(best - speed) ? cur : best
+  );
+}
+
+function awaitTx(tx: IDBTransaction, fallbackMessage: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let txError: DOMException | Error | null = null;
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => {
+      txError = tx.error;
+      reject(tx.error ?? new Error(fallbackMessage));
+    };
+    tx.onabort = () => {
+      reject(txError ?? tx.error ?? new Error(`${fallbackMessage} (transaction aborted)`));
+    };
+  });
+}
 
 function openDB(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
@@ -42,6 +63,10 @@ function openDB(): Promise<IDBDatabase> {
       };
       resolve(db);
     };
+    request.onblocked = () => {
+      dbPromise = null;
+      reject(new Error('Database upgrade blocked by another open ChoreoLoop tab.'));
+    };
     request.onerror = () => {
       dbPromise = null;
       reject(request.error ?? new Error('Failed to open IndexedDB'));
@@ -51,13 +76,17 @@ function openDB(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
-function normalizeTrackSettings(raw: Partial<TrackMetadata['settings']> | undefined): TrackMetadata['settings'] {
+export function normalizeTrackSettings(
+  raw: Partial<TrackMetadata['settings']> | undefined,
+  mediaKind?: MediaKind
+): TrackMetadata['settings'] {
   const legacySec = (raw as { countInSeconds?: number } | undefined)?.countInSeconds;
   const legacyMode = raw?.countInMode as string | undefined;
 
-  let countInEnabled = raw?.countInEnabled ?? false;
+  let countInEnabled = typeof raw?.countInEnabled === 'boolean' ? raw.countInEnabled : false;
   let countInMode: TrackMetadata['settings']['countInMode'] = '3s';
-  let beatCount = raw?.beatCount ?? 4;
+  const rawBeatCount = Number(raw?.beatCount);
+  let beatCount = Number.isFinite(rawBeatCount) ? rawBeatCount : 4;
 
   if (legacyMode === '3s' || legacyMode === '5s' || legacyMode === 'beats') {
     countInMode = legacyMode;
@@ -80,9 +109,13 @@ function normalizeTrackSettings(raw: Partial<TrackMetadata['settings']> | undefi
   }
 
   const rawSpeed = Number(raw?.speed);
-  const speed = Number.isFinite(rawSpeed) ? Math.min(1.25, Math.max(0.25, rawSpeed)) : 1.0;
+  const clampedSpeed = Number.isFinite(rawSpeed)
+    ? Math.min(1.25, Math.max(0.25, Math.round(rawSpeed * 100) / 100))
+    : 1.0;
+  const speed = mediaKind === 'youtube' ? snapYouTubeRate(clampedSpeed) : clampedSpeed;
   const pointA = typeof raw?.pointA === 'number' && Number.isFinite(raw.pointA) && raw.pointA >= 0 ? raw.pointA : null;
-  const pointB = typeof raw?.pointB === 'number' && Number.isFinite(raw.pointB) && raw.pointB >= 0 ? raw.pointB : null;
+  const rawPointB = typeof raw?.pointB === 'number' && Number.isFinite(raw.pointB) && raw.pointB >= 0 ? raw.pointB : null;
+  const pointB = pointA !== null && rawPointB !== null && rawPointB > pointA ? rawPointB : pointA === null ? rawPointB : null;
 
   const rawVol = Number(raw?.countInVolume);
   const countInVolume = Number.isFinite(rawVol) ? Math.min(1, Math.max(0, rawVol)) : 0.85;
@@ -91,19 +124,22 @@ function normalizeTrackSettings(raw: Partial<TrackMetadata['settings']> | undefi
       ? raw.countInTone
       : 'woodblock';
 
+  const rawBpm = Number(raw?.bpm);
+  const bpm = Number.isFinite(rawBpm) ? Math.min(240, Math.max(40, Math.round(rawBpm))) : 120;
+
   return {
     speed,
-    mirror: Boolean(raw?.mirror),
+    mirror: mediaKind === 'youtube' ? false : Boolean(raw?.mirror),
     countInEnabled,
     countInMode,
     repeatCountInOnLoop: raw?.repeatCountInOnLoop ?? true,
-    bpm: Math.min(240, Math.max(40, Math.round(raw?.bpm ?? 120))),
+    bpm,
     beatCount: Math.max(1, Math.min(16, Math.round(beatCount))),
     countInTone,
     countInVolume,
     pointA,
     pointB,
-    loopEnabled: raw?.loopEnabled ?? false,
+    loopEnabled: Boolean(raw?.loopEnabled) && pointA !== null && pointB !== null && pointB > pointA,
   };
 }
 
@@ -112,15 +148,17 @@ export async function listTracks(): Promise<TrackMetadata[]> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(META_STORE, 'readonly');
     const req = tx.objectStore(META_STORE).getAll();
+    let result: TrackMetadata[] = [];
     req.onsuccess = () => {
-      const items = ((req.result as TrackMetadata[]) ?? []).map((item) => ({
+      result = ((req.result as TrackMetadata[]) ?? []).map((item) => ({
         ...item,
-        settings: normalizeTrackSettings(item.settings),
+        settings: normalizeTrackSettings(item.settings, item.mediaKind),
       }));
-      items.sort((a, b) => b.updatedAt - a.updatedAt);
-      resolve(items);
+      result.sort((a, b) => b.updatedAt - a.updatedAt);
     };
-    req.onerror = () => reject(req.error ?? new Error('Failed to list tracks'));
+    tx.oncomplete = () => resolve(result);
+    tx.onerror = () => reject(tx.error ?? req.error ?? new Error('Failed to list tracks'));
+    tx.onabort = () => reject(tx.error ?? new Error('Failed to list tracks (transaction aborted)'));
   });
 }
 
@@ -129,18 +167,19 @@ export async function getTrackMeta(id: string): Promise<TrackMetadata | null> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(META_STORE, 'readonly');
     const req = tx.objectStore(META_STORE).get(id);
+    let item: TrackMetadata | null = null;
     req.onsuccess = () => {
-      const item = req.result as TrackMetadata | undefined;
-      if (!item) {
-        resolve(null);
-        return;
+      const raw = req.result as TrackMetadata | undefined;
+      if (raw) {
+        item = {
+          ...raw,
+          settings: normalizeTrackSettings(raw.settings, raw.mediaKind),
+        };
       }
-      resolve({
-        ...item,
-        settings: normalizeTrackSettings(item.settings),
-      });
     };
-    req.onerror = () => reject(req.error ?? new Error('Failed to read track metadata'));
+    tx.oncomplete = () => resolve(item);
+    tx.onerror = () => reject(tx.error ?? req.error ?? new Error('Failed to read track metadata'));
+    tx.onabort = () => reject(tx.error ?? new Error('Failed to read track metadata (transaction aborted)'));
   });
 }
 
@@ -149,19 +188,15 @@ export async function getTrackMedia(id: string): Promise<Blob | null> {
   return new Promise((resolve, reject) => {
     const tx = db.transaction(MEDIA_STORE, 'readonly');
     const req = tx.objectStore(MEDIA_STORE).get(id);
+    let media: Blob | null = null;
     req.onsuccess = () => {
       const rec = req.result as TrackMediaRecord | undefined;
-      if (!rec) {
-        resolve(null);
-        return;
-      }
-      if (rec.data instanceof Blob) {
-        resolve(rec.data);
-      } else {
-        resolve(new Blob([rec.data], { type: rec.mimeType }));
-      }
+      if (!rec) return;
+      media = rec.data instanceof Blob ? rec.data : new Blob([rec.data], { type: rec.mimeType });
     };
-    req.onerror = () => reject(req.error ?? new Error('Failed to read track media'));
+    tx.oncomplete = () => resolve(media);
+    tx.onerror = () => reject(tx.error ?? req.error ?? new Error('Failed to read track media'));
+    tx.onabort = () => reject(tx.error ?? new Error('Failed to read track media (transaction aborted)'));
   });
 }
 
@@ -191,7 +226,7 @@ export interface SaveImportedResult {
 
 export async function saveImportedFile(
   file: File,
-  options: { keepLocalCopy?: boolean; existingTrack?: TrackMetadata } = {}
+  options: { keepLocalCopy?: boolean; existingTrack?: TrackMetadata; forceMediaWrite?: boolean } = {}
 ): Promise<SaveImportedResult> {
   if (file.size === 0) {
     throw new Error('Selected file is empty (0 bytes) or still downloading from cloud storage.');
@@ -218,13 +253,13 @@ export async function saveImportedFile(
     createdAt: existing?.createdAt ?? now,
     updatedAt: now,
     bookmarks: existing?.bookmarks ?? [],
-    settings: existing?.settings ?? normalizeTrackSettings(undefined),
+    settings: existing?.settings ?? normalizeTrackSettings(undefined, mediaKind),
   };
 
   const db = await openDB();
   let quotaFallback = false;
 
-  if (keepLocalCopy && !existing?.hasOfflineCopy) {
+  if (keepLocalCopy && (!existing?.hasOfflineCopy || options.forceMediaWrite)) {
     const mediaRecord: TrackMediaRecord = {
       id: meta.id,
       mimeType,
@@ -232,20 +267,10 @@ export async function saveImportedFile(
     };
     try {
       meta.hasOfflineCopy = true;
-      let txError: DOMException | Error | null = null;
-      await new Promise<void>((resolve, reject) => {
-        const tx = db.transaction([META_STORE, MEDIA_STORE], 'readwrite');
-        tx.objectStore(META_STORE).put(meta);
-        tx.objectStore(MEDIA_STORE).put(mediaRecord);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => {
-          txError = tx.error;
-          reject(tx.error ?? new Error('IndexedDB write failed'));
-        };
-        tx.onabort = () => {
-          reject(txError ?? tx.error ?? new Error('IndexedDB transaction aborted'));
-        };
-      });
+      const tx = db.transaction([META_STORE, MEDIA_STORE], 'readwrite');
+      tx.objectStore(META_STORE).put(meta);
+      tx.objectStore(MEDIA_STORE).put(mediaRecord);
+      await awaitTx(tx, 'IndexedDB write failed');
     } catch (err) {
       const errName = err instanceof DOMException ? err.name : '';
       const isQuota =
@@ -266,7 +291,7 @@ export async function saveImportedFile(
       }
     }
   } else {
-    if (existing?.hasOfflineCopy === undefined && existing) {
+    if (keepLocalCopy && existing && existing.hasOfflineCopy === undefined) {
       meta.hasOfflineCopy = true;
     }
     await updateTrackMeta(meta);
@@ -290,16 +315,13 @@ export async function saveYouTubeTrack(youtubeId: string, title?: string): Promi
     createdAt: now,
     updatedAt: now,
     bookmarks: [],
-    settings: normalizeTrackSettings(undefined),
+    settings: normalizeTrackSettings(undefined, 'youtube'),
   };
 
   const db = await openDB();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(META_STORE, 'readwrite');
-    tx.objectStore(META_STORE).put(meta);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error ?? new Error('Failed to save YouTube track'));
-  });
+  const tx = db.transaction(META_STORE, 'readwrite');
+  tx.objectStore(META_STORE).put(meta);
+  await awaitTx(tx, 'Failed to save YouTube track');
 
   setLastActiveTrackId(meta.id);
   return meta;
@@ -308,23 +330,17 @@ export async function saveYouTubeTrack(youtubeId: string, title?: string): Promi
 export async function updateTrackMeta(meta: TrackMetadata): Promise<void> {
   const db = await openDB();
   meta.updatedAt = Date.now();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction(META_STORE, 'readwrite');
-    tx.objectStore(META_STORE).put(meta);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error ?? new Error('Failed to update track'));
-  });
+  const tx = db.transaction(META_STORE, 'readwrite');
+  tx.objectStore(META_STORE).put(meta);
+  await awaitTx(tx, 'Failed to update track');
 }
 
 export async function deleteTrack(id: string): Promise<void> {
   const db = await openDB();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction([META_STORE, MEDIA_STORE], 'readwrite');
-    tx.objectStore(META_STORE).delete(id);
-    tx.objectStore(MEDIA_STORE).delete(id);
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error ?? new Error('Failed to delete track'));
-  });
+  const tx = db.transaction([META_STORE, MEDIA_STORE], 'readwrite');
+  tx.objectStore(META_STORE).delete(id);
+  tx.objectStore(MEDIA_STORE).delete(id);
+  await awaitTx(tx, 'Failed to delete track');
   if (getLastActiveTrackId() === id) {
     setLastActiveTrackId(null);
   }
@@ -332,13 +348,10 @@ export async function deleteTrack(id: string): Promise<void> {
 
 export async function clearAllTracks(): Promise<void> {
   const db = await openDB();
-  await new Promise<void>((resolve, reject) => {
-    const tx = db.transaction([META_STORE, MEDIA_STORE], 'readwrite');
-    tx.objectStore(META_STORE).clear();
-    tx.objectStore(MEDIA_STORE).clear();
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error ?? new Error('Failed to clear library'));
-  });
+  const tx = db.transaction([META_STORE, MEDIA_STORE], 'readwrite');
+  tx.objectStore(META_STORE).clear();
+  tx.objectStore(MEDIA_STORE).clear();
+  await awaitTx(tx, 'Failed to clear library');
   setLastActiveTrackId(null);
 }
 

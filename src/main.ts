@@ -7,6 +7,7 @@ import {
   getTrackMedia,
   getTrackMeta,
   listTracks,
+  normalizeTrackSettings,
   saveImportedFile,
   saveYouTubeTrack,
   setLastActiveTrackId,
@@ -22,7 +23,7 @@ import {
 } from './services/share';
 import { createTapTempo } from './services/tap-tempo';
 import { createWakeLockController } from './services/wake-lock';
-import type { CountInMode, CountInTone, LoopBookmark, TrackMetadata } from './types';
+import type { LoopBookmark, TrackMetadata } from './types';
 import { initLayoutOrder } from './ui/layout-order';
 import { renderLibraryDrawer } from './ui/library-drawer';
 import { createLyricsController } from './ui/lyrics-panel';
@@ -188,10 +189,13 @@ let tracks: TrackMetadata[] = [];
 let activeTrack: TrackMetadata | null = null;
 let toastTimer: number | null = null;
 let saveDebounceTimer: number | null = null;
+let pendingSaveTrack: TrackMetadata | null = null;
 let nudgeStep = 0.1;
 let isStageFullscreen = false;
 let keepLocalCopy = true;
 let pendingRelinkTrackId: string | null = null;
+let pendingRelinkMissingBlob = false;
+let selectSeq = 0;
 const sessionFiles = new Map<string, File>();
 
 function syncKeepCopyUI(): void {
@@ -302,28 +306,54 @@ const player = new ChoreoPlayer(videoEl, audioEl, ytContainerEl, {
   onError: (msg) => showToast(msg, 5200),
 });
 
+function cancelPendingSave(trackId?: string): void {
+  if (trackId && pendingSaveTrack && pendingSaveTrack.id !== trackId) return;
+  if (saveDebounceTimer !== null) {
+    window.clearTimeout(saveDebounceTimer);
+    saveDebounceTimer = null;
+  }
+  pendingSaveTrack = null;
+}
+
+async function flushPendingSave(): Promise<void> {
+  if (saveDebounceTimer !== null) {
+    window.clearTimeout(saveDebounceTimer);
+    saveDebounceTimer = null;
+  }
+  const target = pendingSaveTrack;
+  pendingSaveTrack = null;
+  if (!target || !tracks.some((t) => t.id === target.id)) return;
+  try {
+    await updateTrackMeta(target);
+  } catch {
+    showToast('Could not save track settings locally.', 3500);
+  }
+}
+
 function scheduleSaveTrackSettings(): void {
   if (!activeTrack) return;
   const snap = player.getSnapshot();
-  activeTrack.settings = {
-    speed: snap.speed,
-    mirror: snap.mirror,
-    countInEnabled: snap.countInEnabled,
-    countInMode: snap.countInMode,
-    repeatCountInOnLoop: snap.repeatCountInOnLoop,
-    bpm: snap.bpm,
-    beatCount: snap.beatCount,
-    countInTone: snap.countInTone,
-    countInVolume: snap.countInVolume,
-    pointA: snap.pointA,
-    pointB: snap.pointB,
-    loopEnabled: snap.loopEnabled,
-  };
+  activeTrack.settings = normalizeTrackSettings(
+    {
+      speed: snap.speed,
+      mirror: snap.mirror,
+      countInEnabled: snap.countInEnabled,
+      countInMode: snap.countInMode,
+      repeatCountInOnLoop: snap.repeatCountInOnLoop,
+      bpm: snap.bpm,
+      beatCount: snap.beatCount,
+      countInTone: snap.countInTone,
+      countInVolume: snap.countInVolume,
+      pointA: snap.pointA,
+      pointB: snap.pointB,
+      loopEnabled: snap.loopEnabled,
+    },
+    activeTrack.mediaKind
+  );
+  pendingSaveTrack = activeTrack;
   if (saveDebounceTimer !== null) window.clearTimeout(saveDebounceTimer);
   saveDebounceTimer = window.setTimeout(() => {
-    if (activeTrack) {
-      void updateTrackMeta(activeTrack);
-    }
+    void flushPendingSave();
   }, 200);
 }
 
@@ -477,6 +507,14 @@ function renderPlayerState(snap: PlayerStateSnapshot): void {
   speedSlider.value = String(snap.speed);
   btnSpeedMinus.textContent = isYouTube ? '-25%' : '-5%';
   btnSpeedPlus.textContent = isYouTube ? '+25%' : '+5%';
+  btnSpeedMinus.setAttribute(
+    'aria-label',
+    isYouTube ? 'Decrease speed by 25%' : 'Decrease speed by 5%'
+  );
+  btnSpeedPlus.setAttribute(
+    'aria-label',
+    isYouTube ? 'Increase speed by 25%' : 'Increase speed by 5%'
+  );
   for (const btn of speedButtons) {
     const preset = Number(btn.dataset.speed);
     const unsupportedOnYt = isYouTube && Math.abs(preset - 0.9) < 0.01;
@@ -611,7 +649,17 @@ async function refreshTrackList(): Promise<void> {
 }
 
 async function selectTrack(id: string, allowPrompt = true): Promise<void> {
-  const meta = await getTrackMeta(id);
+  await flushPendingSave();
+  const seq = ++selectSeq;
+
+  let meta: TrackMetadata | null = null;
+  try {
+    meta = await getTrackMeta(id);
+  } catch {
+    showToast('Could not read track metadata.');
+    return;
+  }
+  if (seq !== selectSeq) return;
   if (!meta) {
     showToast('Track metadata not found.');
     return;
@@ -622,20 +670,27 @@ async function selectTrack(id: string, allowPrompt = true): Promise<void> {
     setLastActiveTrackId(meta.id);
     trackTitleEl.textContent = meta.name;
     audioTrackNameEl.textContent = meta.name;
-    await player.loadYouTube(meta.youtubeId, meta.settings);
+    toggleBookmarkForm(false);
     lyricsController.onTrackChanged(activeTrack);
     renderLibrary();
+    await player.loadYouTube(meta.youtubeId, meta.settings);
     return;
   }
 
   let mediaSource: Blob | File | null = sessionFiles.get(id) ?? null;
   if (!mediaSource && meta.hasOfflineCopy !== false) {
-    mediaSource = await getTrackMedia(id);
+    try {
+      mediaSource = await getTrackMedia(id);
+    } catch {
+      mediaSource = null;
+    }
+    if (seq !== selectSeq) return;
   }
 
   if (!mediaSource) {
     if (allowPrompt) {
       pendingRelinkTrackId = meta.id;
+      pendingRelinkMissingBlob = meta.hasOfflineCopy !== false;
       showToast(`Select "${meta.fileName || meta.name}" to resume with your saved loops.`, 4500);
       fileInput.click();
     }
@@ -646,6 +701,7 @@ async function selectTrack(id: string, allowPrompt = true): Promise<void> {
   setLastActiveTrackId(meta.id);
   trackTitleEl.textContent = meta.name;
   audioTrackNameEl.textContent = meta.name;
+  toggleBookmarkForm(false);
   player.loadMedia(mediaSource, meta.mediaKind === 'video' ? 'video' : 'audio', meta.settings);
   lyricsController.onTrackChanged(activeTrack);
   renderLibrary();
@@ -654,7 +710,8 @@ async function selectTrack(id: string, allowPrompt = true): Promise<void> {
 async function processImportedFiles(
   fileList: File[],
   useKeepCopy: boolean,
-  relinkId: string | null
+  relinkId: string | null,
+  forceMediaWrite = false
 ): Promise<void> {
   let lastImported: TrackMetadata | null = null;
   let lastWasMatched = false;
@@ -665,13 +722,19 @@ async function processImportedFiles(
     try {
       showToast(useKeepCopy ? `Importing ${file.name}...` : `Loading ${file.name}...`);
       let existingTrack: TrackMetadata | undefined;
+      let rewriteBlob = false;
       if (relinkId && i === 0 && fileList.length === 1) {
         existingTrack = (await getTrackMeta(relinkId)) ?? undefined;
+        rewriteBlob = forceMediaWrite;
       } else {
         existingTrack = await findMatchingLocalTrack(file);
       }
 
-      const result = await saveImportedFile(file, { keepLocalCopy: useKeepCopy, existingTrack });
+      const result = await saveImportedFile(file, {
+        keepLocalCopy: useKeepCopy,
+        existingTrack,
+        forceMediaWrite: rewriteBlob,
+      });
       sessionFiles.set(result.meta.id, file);
       lastImported = result.meta;
       lastWasMatched = Boolean(existingTrack);
@@ -698,15 +761,19 @@ async function processImportedFiles(
 
 let pendingChoiceFiles: File[] | null = null;
 let pendingChoiceRelinkId: string | null = null;
+let pendingChoiceForceMedia = false;
 
 async function handleFilesImported(files: FileList | null): Promise<void> {
   if (!files || files.length === 0) {
     pendingRelinkTrackId = null;
+    pendingRelinkMissingBlob = false;
     return;
   }
 
   const relinkId = pendingRelinkTrackId;
+  const forceMedia = pendingRelinkMissingBlob;
   pendingRelinkTrackId = null;
+  pendingRelinkMissingBlob = false;
   const fileList = Array.from(files);
   fileInput.value = '';
 
@@ -721,13 +788,14 @@ async function handleFilesImported(files: FileList | null): Promise<void> {
   if (keepLocalCopy && !relinkId && (hasLargeFile || cachedBytes + incomingBytes > cacheThresholdBytes)) {
     pendingChoiceFiles = fileList;
     pendingChoiceRelinkId = relinkId;
+    pendingChoiceForceMedia = forceMedia;
     storageChoiceTextEl.textContent = `Large import (${formatBytes(incomingBytes)}, cached: ${formatBytes(cachedBytes)}). Save an offline copy, or stream directly (0 MB)? Due to iOS/Android browser security, streamed files must be re-selected after an app restart, though your loops stay saved.`;
     storageChoiceBannerEl.classList.remove('hidden');
     openLibraryModal();
     return;
   }
 
-  await processImportedFiles(fileList, keepLocalCopy, relinkId);
+  await processImportedFiles(fileList, keepLocalCopy, relinkId, forceMedia);
 }
 
 async function handleYouTubeImport(urlOrId: string, title?: string): Promise<void> {
@@ -744,11 +812,18 @@ async function handleYouTubeImport(urlOrId: string, title?: string): Promise<voi
 }
 
 async function handleDeleteTrack(id: string): Promise<void> {
+  cancelPendingSave(id);
+  if (pendingRelinkTrackId === id) {
+    pendingRelinkTrackId = null;
+    pendingRelinkMissingBlob = false;
+  }
   await deleteTrack(id);
   sessionFiles.delete(id);
   if (activeTrack?.id === id) {
+    selectSeq += 1;
     activeTrack = null;
     trackTitleEl.textContent = 'No track loaded';
+    toggleBookmarkForm(false);
     player.unload();
     lyricsController.onTrackChanged(null);
   }
@@ -850,29 +925,30 @@ function syncModalScrollLock(): void {
 }
 
 async function openShareModal(): Promise<void> {
-  if (!activeTrack) return;
-  const isYt = activeTrack.mediaKind === 'youtube' && Boolean(activeTrack.youtubeId);
+  const track = activeTrack;
+  if (!track) return;
+  const isYt = track.mediaKind === 'youtube' && Boolean(track.youtubeId);
   shareYtSection.classList.toggle('hidden', !isYt);
 
   if (isYt) {
-    shareLinkInput.value = await encodeShareUrl(activeTrack);
+    shareLinkInput.value = 'Generating share link...';
     shareSummaryChips.innerHTML = '';
     const chips: string[] = [
       'YouTube',
-      `${activeTrack.settings.speed.toFixed(2)}x`,
-      activeTrack.settings.pointA !== null && activeTrack.settings.pointB !== null
-        ? `Loop ${formatTime(activeTrack.settings.pointA).slice(0, 5)} - ${formatTime(activeTrack.settings.pointB).slice(0, 5)}`
+      `${track.settings.speed.toFixed(2)}x`,
+      track.settings.pointA !== null && track.settings.pointB !== null
+        ? `Loop ${formatTime(track.settings.pointA).slice(0, 5)} - ${formatTime(track.settings.pointB).slice(0, 5)}`
         : 'No A-B range',
-      `${activeTrack.bookmarks.length} Bookmark${activeTrack.bookmarks.length === 1 ? '' : 's'}`,
+      `${track.bookmarks.length} Bookmark${track.bookmarks.length === 1 ? '' : 's'}`,
     ];
-    if (activeTrack.lyrics && activeTrack.lyrics.lines.length > 0) {
-      chips.push(`Lyrics (${activeTrack.lyrics.lines.length} lines)`);
+    if (track.lyrics && track.lyrics.lines.length > 0) {
+      chips.push(`Lyrics (${track.lyrics.lines.length} lines)`);
     }
-    if (activeTrack.settings.countInEnabled) {
+    if (track.settings.countInEnabled) {
       chips.push(
-        activeTrack.settings.countInMode === 'beats'
-          ? `${activeTrack.settings.beatCount} Beats @ ${activeTrack.settings.bpm} BPM`
-          : `Count-In ${activeTrack.settings.countInMode}`
+        track.settings.countInMode === 'beats'
+          ? `${track.settings.beatCount} Beats @ ${track.settings.bpm} BPM`
+          : `Count-In ${track.settings.countInMode}`
       );
     }
     for (const label of chips) {
@@ -886,6 +962,17 @@ async function openShareModal(): Promise<void> {
 
   shareModal.classList.remove('hidden');
   syncModalScrollLock();
+
+  if (isYt) {
+    try {
+      const url = await encodeShareUrl(track);
+      if (activeTrack?.id === track.id) {
+        shareLinkInput.value = url;
+      }
+    } catch {
+      shareLinkInput.value = '';
+    }
+  }
 }
 
 function closeShareModal(): void {
@@ -915,6 +1002,10 @@ function openLibraryModal(): void {
 
 function closeLibraryModal(): void {
   libraryConfirmEl.classList.add('hidden');
+  storageChoiceBannerEl.classList.add('hidden');
+  pendingChoiceFiles = null;
+  pendingChoiceRelinkId = null;
+  pendingChoiceForceMedia = false;
   libraryModal.classList.add('hidden');
   syncModalScrollLock();
 }
@@ -946,7 +1037,11 @@ function seekFromClientX(clientX: number): void {
 
 scrubberEl.addEventListener('pointerdown', (e) => {
   isScrubbing = true;
-  scrubberEl.setPointerCapture(e.pointerId);
+  try {
+    scrubberEl.setPointerCapture(e.pointerId);
+  } catch {
+    // Ignore pointer capture errors
+  }
   seekFromClientX(e.clientX);
 });
 
@@ -972,7 +1067,13 @@ scrubberEl.addEventListener('pointerup', (e) => {
   }
   seekFromClientX(e.clientX);
   pendingScrubX = null;
-  scrubberEl.releasePointerCapture(e.pointerId);
+  if (scrubberEl.hasPointerCapture(e.pointerId)) {
+    try {
+      scrubberEl.releasePointerCapture(e.pointerId);
+    } catch {
+      // Ignore release errors
+    }
+  }
 });
 
 scrubberEl.addEventListener('pointercancel', () => {
@@ -1040,29 +1141,35 @@ btnKeepCopy.addEventListener('click', () => {
 btnChoiceStream.addEventListener('click', () => {
   const files = pendingChoiceFiles;
   const relink = pendingChoiceRelinkId;
+  const forceMedia = pendingChoiceForceMedia;
   pendingChoiceFiles = null;
   pendingChoiceRelinkId = null;
+  pendingChoiceForceMedia = false;
   storageChoiceBannerEl.classList.add('hidden');
   closeLibraryModal();
   if (files) {
-    void processImportedFiles(files, false, relink);
+    void processImportedFiles(files, false, relink, forceMedia);
   }
 });
 
 btnChoiceCopy.addEventListener('click', () => {
   const files = pendingChoiceFiles;
   const relink = pendingChoiceRelinkId;
+  const forceMedia = pendingChoiceForceMedia;
   pendingChoiceFiles = null;
   pendingChoiceRelinkId = null;
+  pendingChoiceForceMedia = false;
   storageChoiceBannerEl.classList.add('hidden');
   closeLibraryModal();
   if (files) {
-    void processImportedFiles(files, true, relink);
+    void processImportedFiles(files, true, relink, forceMedia);
   }
 });
 
 const triggerImport = () => {
   closeHeaderMenu();
+  pendingRelinkTrackId = null;
+  pendingRelinkMissingBlob = false;
   fileInput.click();
 };
 $('btn-import-empty').addEventListener('click', triggerImport);
@@ -1072,6 +1179,7 @@ fileInput.addEventListener('change', () => {
 });
 fileInput.addEventListener('cancel', () => {
   pendingRelinkTrackId = null;
+  pendingRelinkMissingBlob = false;
 });
 
 $('btn-yt-modal').addEventListener('click', () => {
@@ -1122,11 +1230,17 @@ $('btn-confirm-clear-cancel').addEventListener('click', () => {
 
 $('btn-confirm-clear-yes').addEventListener('click', () => {
   void (async () => {
+    cancelPendingSave();
+    pendingRelinkTrackId = null;
+    pendingRelinkMissingBlob = false;
+    selectSeq += 1;
     await clearAllTracks();
     sessionFiles.clear();
     activeTrack = null;
     trackTitleEl.textContent = 'No track loaded';
+    toggleBookmarkForm(false);
     player.unload();
+    lyricsController.onTrackChanged(null);
     libraryConfirmEl.classList.add('hidden');
     await refreshTrackList();
     showToast('Library cleared');
@@ -1180,7 +1294,10 @@ btnCountInToggle.addEventListener('click', () => {
 
 for (const btn of countInButtons) {
   btn.addEventListener('click', () => {
-    player.setCountInMode((btn.dataset.countin ?? '3s') as CountInMode);
+    const mode = btn.dataset.countin;
+    if (mode === '3s' || mode === '5s' || mode === 'beats') {
+      player.setCountInMode(mode);
+    }
   });
 }
 
@@ -1205,7 +1322,10 @@ btnTapBpm.addEventListener('click', () => {
 
 for (const btn of toneButtons) {
   btn.addEventListener('click', () => {
-    player.setCountInTone((btn.dataset.tone ?? 'woodblock') as CountInTone);
+    const tone = btn.dataset.tone;
+    if (tone === 'woodblock' || tone === 'click' || tone === 'beep') {
+      player.setCountInTone(tone);
+    }
   });
 }
 
@@ -1376,15 +1496,29 @@ setupJsonInput.addEventListener('change', async () => {
   const file = setupJsonInput.files?.[0];
   setupJsonInput.value = '';
   if (!file) return;
-  const imported = parseTrackSetupJson(await file.text());
+  if (file.size > 2 * 1024 * 1024) {
+    showToast('Setup file is too large (max 2 MB).');
+    return;
+  }
+  let rawText = '';
+  try {
+    rawText = await file.text();
+  } catch {
+    showToast('Could not read setup file.');
+    return;
+  }
+  const imported = parseTrackSetupJson(rawText);
   if (!imported) {
     showToast('Invalid .choreoloop.json setup file.');
     return;
   }
 
-  if (imported.youtubeId && (!activeTrack || activeTrack.mediaKind !== 'youtube')) {
+  if (
+    imported.youtubeId &&
+    (!activeTrack || activeTrack.mediaKind !== 'youtube' || activeTrack.youtubeId !== imported.youtubeId)
+  ) {
     const meta = await saveYouTubeTrack(imported.youtubeId, imported.name);
-    meta.settings = { ...meta.settings, ...imported.settings };
+    meta.settings = normalizeTrackSettings({ ...meta.settings, ...imported.settings }, 'youtube');
     meta.bookmarks = imported.bookmarks;
     if (imported.lyrics) meta.lyrics = imported.lyrics;
     await updateTrackMeta(meta);
@@ -1400,7 +1534,10 @@ setupJsonInput.addEventListener('change', async () => {
     return;
   }
 
-  activeTrack.settings = { ...activeTrack.settings, ...imported.settings };
+  activeTrack.settings = normalizeTrackSettings(
+    { ...activeTrack.settings, ...imported.settings },
+    activeTrack.mediaKind
+  );
   activeTrack.bookmarks = imported.bookmarks;
   if (imported.lyrics) activeTrack.lyrics = imported.lyrics;
   await updateTrackMeta(activeTrack);
@@ -1410,24 +1547,28 @@ setupJsonInput.addEventListener('change', async () => {
   showToast('Setup applied to current track.');
 });
 
-// Keyboard shortcuts for desktop testing
+function hasOpenModal(): boolean {
+  return (
+    !shareModal.classList.contains('hidden') ||
+    !ytModal.classList.contains('hidden') ||
+    !libraryModal.classList.contains('hidden') ||
+    !guideModal.classList.contains('hidden')
+  );
+}
+
+// Keyboard shortcuts
 window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape') {
     if (lyricsController.isFullscreen()) {
       lyricsController.exitFullscreen();
       return;
     }
-    if (layoutOrder.isEditing()) {
-      layoutOrder.setEditing(false);
-      btnReorderLayout.textContent = 'Reorder Panels';
+    if (!headerMenuEl.classList.contains('hidden')) {
+      closeHeaderMenu();
       return;
     }
     if (!shareModal.classList.contains('hidden')) {
       closeShareModal();
-      return;
-    }
-    if (!headerMenuEl.classList.contains('hidden')) {
-      closeHeaderMenu();
       return;
     }
     if (!ytModal.classList.contains('hidden')) {
@@ -1442,11 +1583,18 @@ window.addEventListener('keydown', (e) => {
       closeGuideModal();
       return;
     }
+    if (layoutOrder.isEditing()) {
+      layoutOrder.setEditing(false);
+      btnReorderLayout.textContent = 'Reorder Panels';
+      return;
+    }
     if (isStageFullscreen) {
       setStageFullscreen(false);
       return;
     }
   }
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (hasOpenModal()) return;
   if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
   if (e.code === 'Space') {
     e.preventDefault();
@@ -1477,7 +1625,7 @@ async function checkIncomingSharedLink(): Promise<boolean> {
   if (shared) {
     window.history.replaceState({}, '', window.location.pathname);
     const meta = await saveYouTubeTrack(shared.youtubeId, shared.name);
-    meta.settings = { ...meta.settings, ...shared.settings };
+    meta.settings = normalizeTrackSettings({ ...meta.settings, ...shared.settings }, 'youtube');
     meta.bookmarks = shared.bookmarks;
     if (shared.lyrics) {
       meta.lyrics = shared.lyrics;
@@ -1493,11 +1641,13 @@ async function checkIncomingSharedLink(): Promise<boolean> {
   }
 
   const params = new URLSearchParams(window.location.search);
-  const candidate = params.get('yt') || params.get('url') || params.get('text') || '';
-  const sharedTitle = params.get('title') || undefined;
-  const videoId = extractYouTubeId(candidate);
+  const candidates = [params.get('yt'), params.get('url'), params.get('text')].filter(
+    (v): v is string => Boolean(v)
+  );
+  const videoId = candidates.map((c) => extractYouTubeId(c)).find((id) => Boolean(id)) ?? null;
   if (!videoId) return false;
 
+  const sharedTitle = params.get('title') || undefined;
   window.history.replaceState({}, '', window.location.pathname);
   await handleYouTubeImport(videoId, sharedTitle);
   return true;
@@ -1512,7 +1662,11 @@ async function init(): Promise<void> {
   if (navigator.storage?.persist) {
     void navigator.storage.persist().catch(() => {});
   }
-  await refreshTrackList();
+  try {
+    await refreshTrackList();
+  } catch {
+    showToast('Local storage unavailable in this browser session.', 4500);
+  }
 
   const handledShared = await checkIncomingSharedLink();
   if (handledShared) return;

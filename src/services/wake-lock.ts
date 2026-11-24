@@ -9,14 +9,23 @@ export interface WakeLockController {
 export function createWakeLockController(): WakeLockController {
   let sentinel: WakeLockSentinel | null = null;
   let wanted = false;
+  let requestSeq = 0;
 
   async function acquire(): Promise<void> {
     if (!wanted || document.visibilityState !== 'visible') return;
     if (!('wakeLock' in navigator) || sentinel) return;
+    const seq = ++requestSeq;
     try {
-      sentinel = await navigator.wakeLock.request('screen');
+      const next = await navigator.wakeLock.request('screen');
+      if (!wanted || seq !== requestSeq || sentinel) {
+        void next.release().catch(() => {});
+        return;
+      }
+      sentinel = next;
       sentinel.addEventListener('release', () => {
-        sentinel = null;
+        if (sentinel === next) {
+          sentinel = null;
+        }
       });
     } catch {
       // Ignore wake lock rejection (e.g. low battery mode)
@@ -34,9 +43,13 @@ export function createWakeLockController(): WakeLockController {
       wanted = active;
       if (active) {
         void acquire();
-      } else if (sentinel) {
-        void sentinel.release().catch(() => {});
-        sentinel = null;
+      } else {
+        requestSeq += 1;
+        if (sentinel) {
+          const current = sentinel;
+          sentinel = null;
+          void current.release().catch(() => {});
+        }
       }
     },
   };

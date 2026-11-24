@@ -87,6 +87,7 @@ export function createLyricsController(deps: LyricsControllerDeps): LyricsContro
   let selectedLineIdx = 0;
   let isFsOpen = false;
   let searchResults: LrclibResult[] = [];
+  let searchSeq = 0;
 
   function syncModeButtons(): void {
     document.querySelectorAll<HTMLButtonElement>('[data-lyrics-mode]').forEach((btn) => {
@@ -256,13 +257,13 @@ export function createLyricsController(deps: LyricsControllerDeps): LyricsContro
     resultsEl.appendChild(frag);
   }
 
-  async function applyLyricsText(raw: string, source: 'lrc' | 'plain'): Promise<void> {
+  async function applyLyricsText(raw: string, source: 'lrc' | 'plain'): Promise<boolean> {
     const track = deps.getActiveTrack();
-    if (!track) return;
+    if (!track) return false;
     const parsed = parseLyricsText(raw);
     if (parsed.lines.length === 0) {
       deps.onToast('No lyric lines found in input.');
-      return;
+      return false;
     }
 
     const nextLyrics: TrackLyrics = {
@@ -282,6 +283,7 @@ export function createLyricsController(deps: LyricsControllerDeps): LyricsContro
     selectedLineIdx = Math.max(0, activeLineIdx);
     renderLyricsList();
     deps.onToast(`Saved ${nextLyrics.lines.length} lyric lines offline.`);
+    return true;
   }
 
   async function runSearch(): Promise<void> {
@@ -292,19 +294,27 @@ export function createLyricsController(deps: LyricsControllerDeps): LyricsContro
     }
 
     const track = deps.getActiveTrack();
+    const trackId = track?.id ?? null;
+    const seq = ++searchSeq;
     btnFindSubmit.disabled = true;
     btnFindSubmit.textContent = '...';
     try {
-      searchResults = await searchLrclib(query, track?.duration ?? 0);
+      const results = await searchLrclib(query, track?.duration ?? 0);
+      if (seq !== searchSeq || deps.getActiveTrack()?.id !== trackId) return;
+      searchResults = results;
       if (searchResults.length === 0) {
         deps.onToast('No lyrics found on LRCLIB. Try shortening the title.');
       }
       renderSearchResults();
     } catch {
-      deps.onToast('Could not reach LRCLIB. Check internet or import an .lrc file.');
+      if (seq === searchSeq) {
+        deps.onToast('Could not reach LRCLIB. Check internet or import an .lrc file.');
+      }
     } finally {
-      btnFindSubmit.disabled = false;
-      btnFindSubmit.textContent = 'Search';
+      if (seq === searchSeq) {
+        btnFindSubmit.disabled = false;
+        btnFindSubmit.textContent = 'Search';
+      }
     }
   }
 
@@ -392,8 +402,16 @@ export function createLyricsController(deps: LyricsControllerDeps): LyricsContro
     const file = lrcFileInput.files?.[0];
     lrcFileInput.value = '';
     if (!file) return;
-    const text = await file.text();
-    await applyLyricsText(text, 'lrc');
+    if (file.size > 1024 * 1024) {
+      deps.onToast('Lyrics file is too large (max 1 MB).');
+      return;
+    }
+    try {
+      const text = await file.text();
+      await applyLyricsText(text, 'lrc');
+    } catch {
+      deps.onToast('Could not read lyrics file.');
+    }
   });
 
   btnTogglePaste.addEventListener('click', () => {
@@ -403,14 +421,16 @@ export function createLyricsController(deps: LyricsControllerDeps): LyricsContro
   });
 
   btnPasteSave.addEventListener('click', async () => {
-    await applyLyricsText(pasteArea.value, 'lrc');
-    pasteArea.value = '';
+    const saved = await applyLyricsText(pasteArea.value, 'lrc');
+    if (saved) {
+      pasteArea.value = '';
+    }
   });
 
   document.querySelectorAll<HTMLButtonElement>('[data-lyrics-mode]').forEach((btn) => {
     btn.addEventListener('click', () => {
-      const mode = btn.dataset.lyricsMode as NudgeMode | undefined;
-      if (!mode) return;
+      const mode = btn.dataset.lyricsMode;
+      if (mode !== 'global' && mode !== 'single' && mode !== 'ripple') return;
       nudgeMode = mode;
       syncModeButtons();
     });
@@ -492,6 +512,9 @@ export function createLyricsController(deps: LyricsControllerDeps): LyricsContro
 
   return {
     onTrackChanged(track: TrackMetadata | null): void {
+      searchSeq += 1;
+      btnFindSubmit.disabled = false;
+      btnFindSubmit.textContent = 'Search';
       card.classList.toggle('hidden', !track);
       findOpen = false;
       syncOpen = false;

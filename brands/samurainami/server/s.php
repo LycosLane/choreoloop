@@ -13,7 +13,7 @@ const MAX_AGE_SECONDS = 365 * 86400;
 const MAX_LINKS = 10000;
 const MAX_BODY_BYTES = 20480;
 const ALLOWED_ORIGIN = 'https://loop.samurainami.com';
-const ALLOWED_URL_PATTERN = '/^https:\/\/loop\.samurainami\.com\/#sharez?=[A-Za-z0-9_-]+$/';
+const ALLOWED_URL_PATTERN = '/^https:\/\/loop\.samurainami\.com\/(?:index\.html)?#sharez?=[A-Za-z0-9_-]+$/D';
 
 function getDb(): PDO {
     $pdo = new PDO('sqlite:' . DB_PATH, null, null, [
@@ -76,7 +76,10 @@ if ($method === 'POST') {
     header('Cache-Control: no-store');
 
     $origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-    if ($origin !== '' && $origin !== ALLOWED_ORIGIN) {
+    $referer = $_SERVER['HTTP_REFERER'] ?? '';
+    $originValid = $origin === ALLOWED_ORIGIN;
+    $refererValid = $origin === '' && str_starts_with($referer, ALLOWED_ORIGIN . '/');
+    if (!$originValid && !$refererValid) {
         http_response_code(403);
         echo json_encode(['error' => 'Forbidden origin']);
         exit;
@@ -108,6 +111,7 @@ if ($method === 'POST') {
     try {
         $pdo = getDb();
         $now = time();
+        $pdo->exec('BEGIN IMMEDIATE');
 
         // Auto-cleanup links not accessed for > 365 days
         $cutoff = $now - MAX_AGE_SECONDS;
@@ -126,9 +130,11 @@ if ($method === 'POST') {
             $count = (int) $pdo->query('SELECT COUNT(*) FROM links')->fetchColumn();
             if ($count >= MAX_LINKS) {
                 $excess = $count - MAX_LINKS + 1;
-                $pdo->prepare(
+                $del = $pdo->prepare(
                     'DELETE FROM links WHERE id IN (SELECT id FROM links ORDER BY last_accessed ASC LIMIT :limit)'
-                )->execute([':limit' => $excess]);
+                );
+                $del->bindValue(':limit', $excess, PDO::PARAM_INT);
+                $del->execute();
             }
 
             $code = '';
@@ -145,9 +151,13 @@ if ($method === 'POST') {
             }
         }
 
+        $pdo->exec('COMMIT');
         echo json_encode(['shortUrl' => ALLOWED_ORIGIN . '/?s=' . $code]);
         exit;
     } catch (Throwable $e) {
+        if (isset($pdo) && $pdo instanceof PDO && $pdo->inTransaction()) {
+            $pdo->exec('ROLLBACK');
+        }
         http_response_code(500);
         echo json_encode(['error' => 'Shortener failed']);
         exit;

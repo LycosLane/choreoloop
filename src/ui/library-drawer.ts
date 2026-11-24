@@ -14,10 +14,13 @@ export interface LibraryRenderParams {
   onDeleteTrack: (trackId: string) => void;
 }
 
+let storageReadoutSeq = 0;
+
 async function updateStorageReadout(
   tracks: TrackMetadata[],
   libraryStorageEl: HTMLElement
 ): Promise<void> {
+  const seq = ++storageReadoutSeq;
   const cachedBytes = tracks
     .filter((t) => t.mediaKind !== 'youtube' && t.hasOfflineCopy !== false)
     .reduce((sum, t) => sum + (t.size || 0), 0);
@@ -29,6 +32,7 @@ async function updateStorageReadout(
   try {
     if (navigator.storage?.estimate) {
       const est = await navigator.storage.estimate();
+      if (seq !== storageReadoutSeq) return;
       if (typeof est.quota === 'number' && est.quota > 0) {
         quotaPart = ` of ${formatBytes(est.quota)} quota`;
       }
@@ -37,6 +41,7 @@ async function updateStorageReadout(
     // Ignore storage estimate errors
   }
 
+  if (seq !== storageReadoutSeq) return;
   const streamPart = streamCount > 0 ? ` · ${streamCount} stream-only` : '';
   libraryStorageEl.textContent = `Offline cache: ${formatBytes(cachedBytes)}${quotaPart}${streamPart}`;
 }
