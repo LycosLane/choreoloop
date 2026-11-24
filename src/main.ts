@@ -23,6 +23,7 @@ import {
 import { createTapTempo } from './services/tap-tempo';
 import { createWakeLockController } from './services/wake-lock';
 import type { CountInMode, CountInTone, LoopBookmark, TrackMetadata } from './types';
+import { initLayoutOrder } from './ui/layout-order';
 import { renderLibraryDrawer } from './ui/library-drawer';
 import { createLyricsController } from './ui/lyrics-panel';
 import { initVideoGestures } from './ui/video-gesture';
@@ -169,6 +170,7 @@ const libraryConfirmTextEl = $<HTMLSpanElement>('library-confirm-text');
 const toastEl = $<HTMLDivElement>('toast');
 
 const btnTheme = $<HTMLButtonElement>('btn-theme');
+const btnReorderLayout = $<HTMLButtonElement>('btn-reorder-layout');
 const btnMenu = $<HTMLButtonElement>('btn-menu');
 const headerMenuEl = $<HTMLDivElement>('header-menu');
 const faviconLinkEl = document.getElementById('favicon-link') as HTMLLinkElement | null;
@@ -1294,6 +1296,17 @@ speedSlider.addEventListener('input', () => {
   player.setSpeed(Number(speedSlider.value));
 });
 
+const layoutOrder = initLayoutOrder(() => {
+  btnReorderLayout.textContent = 'Reorder Panels';
+  showToast('Panel order saved on this device.');
+});
+
+btnReorderLayout.addEventListener('click', () => {
+  const editing = layoutOrder.toggleEditing();
+  btnReorderLayout.textContent = editing ? 'Done Reordering' : 'Reorder Panels';
+  closeHeaderMenu();
+});
+
 const lyricsController = createLyricsController({
   getActiveTrack: () => activeTrack,
   getCurrentTime: () => player.getSnapshot().currentTime,
@@ -1397,6 +1410,11 @@ window.addEventListener('keydown', (e) => {
   if (e.code === 'Escape') {
     if (lyricsController.isFullscreen()) {
       lyricsController.exitFullscreen();
+      return;
+    }
+    if (layoutOrder.isEditing()) {
+      layoutOrder.setEditing(false);
+      btnReorderLayout.textContent = 'Reorder Panels';
       return;
     }
     if (!shareModal.classList.contains('hidden')) {

@@ -61,6 +61,9 @@
               <button id="btn-theme" class="menu-item" type="button" role="menuitem">
                 Switch to Light Mode
               </button>
+              <button id="btn-reorder-layout" class="menu-item" type="button" role="menuitem">
+                Reorder Panels
+              </button>
               <button id="btn-guide" class="menu-item" type="button" role="menuitem">
                 How-To &amp; Privacy
               </button>
@@ -163,7 +166,7 @@
         </section>
 
         <!-- Timeline & A-B Scrubber -->
-        <section class="timeline-card" aria-label="Playback timeline">
+        <section id="timeline-card" class="timeline-card" aria-label="Playback timeline">
           <div id="yt-countin-bar" class="yt-countin-bar hidden" role="status" aria-live="assertive">
             <span id="yt-countin-label" class="yt-countin-label">GET READY</span>
             <span id="yt-countin-number" class="yt-countin-number">3</span>
@@ -298,7 +301,7 @@
         </section>
 
         <!-- A-B Loop Controls -->
-        <section class="panel-card" aria-label="A-B Loop Controls">
+        <section id="ab-card" class="panel-card" aria-label="A-B Loop Controls">
           <div class="panel-header">
             <h2 class="panel-title">A-B Loop</h2>
             <div class="panel-header-actions">
@@ -373,7 +376,7 @@
         </section>
 
         <!-- Speed / Slow-Motion Controls -->
-        <section class="panel-card" aria-label="Playback Speed">
+        <section id="speed-card" class="panel-card" aria-label="Playback Speed">
           <div class="panel-header">
             <h2 class="panel-title">Speed (Pitch Preserved)</h2>
             <div class="speed-stepper-wrap">

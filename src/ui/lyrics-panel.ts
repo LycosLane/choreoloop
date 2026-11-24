@@ -187,8 +187,17 @@ export function createLyricsController(deps: LyricsControllerDeps): LyricsContro
   function scrollActiveLineIntoView(): void {
     if (activeLineIdx < 0) return;
     const activeRow = listEl.querySelector<HTMLElement>(`[data-line-idx="${activeLineIdx}"]`);
-    if (activeRow) {
-      activeRow.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    if (!activeRow) return;
+
+    // Scroll only inside #lyrics-list so the outer page viewport never jumps
+    const rowTop = activeRow.offsetTop;
+    const rowBottom = rowTop + activeRow.offsetHeight;
+    const viewTop = listEl.scrollTop;
+    const viewBottom = viewTop + listEl.clientHeight;
+    if (rowTop < viewTop) {
+      listEl.scrollTop = rowTop;
+    } else if (rowBottom > viewBottom) {
+      listEl.scrollTop = rowBottom - listEl.clientHeight;
     }
   }
 
